@@ -48,7 +48,7 @@ impl Server {
         }
     }
 
-    pub async fn run(self, mut transport: impl Transport + 'static) -> io::Result<()> {
+    pub async fn run(self, mut transport: impl Transport) -> io::Result<()> {
         let server = Arc::new(self);
 
         loop {
