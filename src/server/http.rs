@@ -38,7 +38,7 @@ impl server::Transport for Http {
 
     async fn connect(
         &mut self,
-    ) -> io::Result<impl Stream<Item = (Self::Connection, server::Action)> + Send> {
+    ) -> io::Result<impl Stream<Item = (Self::Connection, server::Action)> + Send + 'static> {
         let (stream, _address) = self.listener.accept().await?;
         let stream = rt::TokioIo::new(stream);
 

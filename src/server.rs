@@ -48,7 +48,7 @@ impl Server {
         }
     }
 
-    pub async fn run(self, mut transport: impl Transport) -> io::Result<()> {
+    pub async fn run(self, mut transport: impl Transport + 'static) -> io::Result<()> {
         let server = Arc::new(self);
 
         loop {
@@ -61,16 +61,17 @@ impl Server {
             };
 
             let mut connections = connections.boxed();
+            let server = server.clone();
 
-            while let Some((connection, action)) = connections.next().await {
-                let server = server.clone();
-
-                if let Err(error) =
-                    task::spawn(async move { server.serve(connection, action).await }).await?
-                {
-                    log::error!("{error}")
+            drop(task::spawn(async move {
+                while let Some((connection, action)) = connections.next().await {
+                    if let Err(error) = server.serve(connection, action).await {
+                        log::error!("{error}");
+                    }
                 }
-            }
+
+                Ok::<_, io::Error>(())
+            }))
         }
     }
 }
@@ -85,7 +86,7 @@ pub trait Transport {
 
     fn connect(
         &mut self,
-    ) -> impl Future<Output = io::Result<impl Stream<Item = (Self::Connection, Action)> + Send>>;
+    ) -> impl Future<Output = io::Result<impl Stream<Item = (Self::Connection, Action)> + Send + 'static>>;
 }
 
 pub trait Connection {
