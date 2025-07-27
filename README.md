@@ -23,7 +23,7 @@ An MCP implementation for Rust focused on simplicity and type-safety.
 - Latest protocol version (`2025-06-18`)
 
 ## Server
-List any Rust functions you want to expose as tools, create a `Server` and
+List any Rust functions you want to expose as tools, then create a `Server` and
 run it with your desired transport:
 
 ```rust
