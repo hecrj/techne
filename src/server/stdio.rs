@@ -1,7 +1,8 @@
+use crate::log;
 use crate::server;
 use crate::{Message, Notification, Request, Response};
 
-use futures::stream::{self, Stream};
+use futures::stream::{self, Stream, StreamExt};
 use serde::Serialize;
 use tokio::io::{
     self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Stdin, Stdout,
@@ -49,11 +50,23 @@ where
     ) -> io::Result<
         impl Stream<Item = server::Action<Self::Connection, Self::Decision>> + Send + 'static,
     > {
-        let _ = self.input.read_line(&mut self.json).await?;
-        let message = serde_json::from_str(&self.json);
+        let n = self.input.read_line(&mut self.json).await?;
+
+        if n == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "client closed input pipe",
+            ));
+        }
+
+        let message = serde_json::from_str(&self.json).inspect_err(log::error);
         self.json.clear();
 
-        let action = match message? {
+        let Ok(message) = message else {
+            return Ok(stream::empty().boxed());
+        };
+
+        let action = match message {
             Message::Request(request) => server::Action::Request(
                 Connection {
                     id: request.id,
@@ -69,7 +82,7 @@ where
             }
         };
 
-        Ok(stream::once(async move { action }))
+        Ok(stream::once(async move { action }).boxed())
     }
 }
 

@@ -49,13 +49,13 @@ impl Server {
 
             let connections = match connect {
                 Ok(connections) => connections.boxed(),
-                Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {
                     return Ok(());
                 }
                 Err(error) => {
                     log::error!("{error}");
 
-                    continue;
+                    return Err(error);
                 }
             };
 
