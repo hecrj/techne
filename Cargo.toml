@@ -5,8 +5,8 @@ edition = "2024"
 description = "A simple MCP implementation for Rust"
 
 [features]
-default = ["http"]
-http = ["dep:hyper", "dep:hyper-util", "hyper-util/server-auto", "dep:http", "dep:http-body-util"]
+default = ["server-http"]
+server-http = ["dep:hyper", "dep:hyper-util", "hyper-util/server-auto", "dep:http", "dep:http-body-util"]
 
 [dependencies]
 log = "0.4"
@@ -30,7 +30,7 @@ serde.version = "1"
 serde.features = ["derive"]
 
 tokio.version = "1"
-tokio.features = ["io-util", "net"]
+tokio.features = ["io-std", "io-util", "net"]
 
 [dev-dependencies]
 tracing-subscriber = "0.3"

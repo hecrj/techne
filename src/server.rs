@@ -1,6 +1,11 @@
-#[cfg(feature = "http")]
+mod stdio;
+
+pub use stdio::Stdio;
+
+#[cfg(feature = "server-http")]
 mod http;
 
+#[cfg(feature = "server-http")]
 pub use http::Http;
 
 use crate::request;
@@ -40,12 +45,18 @@ impl Server {
         let server = Arc::new(self);
 
         loop {
-            let Ok(connections) = transport
-                .connect()
-                .await
-                .inspect_err(|error| log::error!("{error}"))
-            else {
-                continue;
+            let connect = transport.connect().await;
+
+            let connections = match connect {
+                Ok(connections) => connections.boxed(),
+                Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                    return Ok(());
+                }
+                Err(error) => {
+                    log::error!("{error}");
+
+                    continue;
+                }
             };
 
             let mut connections = connections.boxed();
@@ -176,17 +187,20 @@ pub trait Transport {
 }
 
 pub trait Connection {
-    fn request<T: Serialize>(
+    fn request<T: Serialize + Send + Sync>(
         &mut self,
         message: Request<T>,
     ) -> impl Future<Output = io::Result<()>> + Send;
 
-    fn notify<T: Serialize>(
+    fn notify<T: Serialize + Send + Sync>(
         &mut self,
         message: Notification<T>,
     ) -> impl Future<Output = io::Result<()>> + Send;
 
-    fn finish<T: Serialize>(self, response: T) -> impl Future<Output = io::Result<()>> + Send;
+    fn finish<T: Serialize + Send + Sync>(
+        self,
+        response: T,
+    ) -> impl Future<Output = io::Result<()>> + Send;
 
     fn reject(self) -> impl Future<Output = io::Result<()>> + Send;
 }
