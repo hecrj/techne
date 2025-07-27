@@ -31,6 +31,8 @@ use techne::Server;
 use techne::server::Http;
 use techne::tool::{tool, string};
 
+use std::io;
+
 #[tokio::main]
 pub async fn main() -> io::Result<()> {
     let tools = [
