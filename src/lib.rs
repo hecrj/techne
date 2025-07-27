@@ -4,7 +4,6 @@ pub mod tool;
 mod content;
 mod message;
 mod notification;
-mod payload;
 mod request;
 mod response;
 mod schema;
@@ -17,6 +16,5 @@ pub use tool::Tool;
 
 use message::Message;
 use notification::Notification;
-use payload::Payload;
 use request::Request;
 use response::Response;

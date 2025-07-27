@@ -35,10 +35,13 @@ impl Http {
 
 impl server::Transport for Http {
     type Connection = Connection;
+    type Decision = Decision;
 
     async fn connect(
         &mut self,
-    ) -> io::Result<impl Stream<Item = (Self::Connection, server::Action)> + Send + 'static> {
+    ) -> io::Result<
+        impl Stream<Item = server::Action<Self::Connection, Self::Decision>> + Send + 'static,
+    > {
         let (stream, _address) = self.listener.accept().await?;
         let stream = rt::TokioIo::new(stream);
 
@@ -59,32 +62,12 @@ impl server::Transport for Http {
 }
 
 pub struct Connection {
+    id: u64,
     status: Option<oneshot::Sender<StatusCode>>,
     body: mpsc::Sender<Bytes>,
-    is_passive: bool,
 }
 
 impl crate::server::Connection for Connection {
-    fn accept(mut self) -> impl Future<Output = io::Result<()>> + Send {
-        if let Some(status) = self.status.take() {
-            let _ = status.send(StatusCode::ACCEPTED);
-        }
-
-        future::ready(Ok(()))
-    }
-
-    fn reject(mut self) -> impl Future<Output = io::Result<()>> + Send {
-        if let Some(status) = self.status.take() {
-            let _ = status.send(if self.is_passive {
-                StatusCode::METHOD_NOT_ALLOWED
-            } else {
-                StatusCode::BAD_REQUEST
-            });
-        }
-
-        future::ready(Ok(()))
-    }
-
     fn request<T: Serialize>(
         &mut self,
         request: Request<T>,
@@ -119,15 +102,14 @@ impl crate::server::Connection for Connection {
         }
     }
 
-    fn finish<T: Serialize>(
-        mut self,
-        response: crate::Response<T>,
-    ) -> impl Future<Output = io::Result<()>> + Send {
+    fn finish<T: Serialize>(mut self, response: T) -> impl Future<Output = io::Result<()>> + Send {
         if let Some(status) = self.status.take() {
             let _ = status.send(StatusCode::OK);
         }
 
-        let bytes = serialize(&Message::Response(response));
+        let bytes = serialize(&Message::Response(crate::Response::new(self.id, response)));
+
+        log::debug!("Finishing connection: {bytes:?}");
 
         async move {
             let _ = self.body.send(bytes).await;
@@ -135,33 +117,78 @@ impl crate::server::Connection for Connection {
             Ok(())
         }
     }
+
+    fn reject(mut self) -> impl Future<Output = io::Result<()>> + Send {
+        if let Some(status) = self.status.take() {
+            let _ = status.send(StatusCode::BAD_REQUEST);
+        }
+
+        future::ready(Ok(()))
+    }
+}
+
+pub struct Decision {
+    status: oneshot::Sender<StatusCode>,
+}
+
+impl server::Decision for Decision {
+    fn accept(self) -> impl Future<Output = io::Result<()>> + Send {
+        let _ = self.status.send(StatusCode::ACCEPTED);
+
+        future::ready(Ok(()))
+    }
+
+    fn reject(self) -> impl Future<Output = io::Result<()>> + Send {
+        let _ = self.status.send(StatusCode::BAD_REQUEST);
+
+        future::ready(Ok(()))
+    }
 }
 
 async fn serve(
     request: hyper::Request<Incoming>,
-    mut sender: mpsc::Sender<(Connection, server::Action)>,
+    mut sender: mpsc::Sender<server::Action<Connection, Decision>>,
 ) -> Result<hyper::Response<BoxBody<Bytes, Error>>, Error> {
-    match (request.method(), request.uri().path()) {
-        (&Method::POST, "/") => {
-            let bytes = dbg!(request.into_body().collect().await?).to_bytes();
+    match request.uri().path() {
+        "/" => {
+            // TODO: Subscriptions (?)
+            if request.method() == Method::GET {
+                return Ok(status(StatusCode::METHOD_NOT_ALLOWED));
+            }
+
+            let (status_sender, status_receiver) = oneshot::channel();
+            let (body_sender, body_receiver) = mpsc::channel(10);
+
+            let bytes = request.into_body().collect().await?.to_bytes();
 
             let Ok(message): Result<Message, _> = serde_json::from_slice(&bytes) else {
                 return Ok(bad_request());
             };
 
-            let (status_sender, status_receiver) = oneshot::channel();
-            let (body_sender, body_receiver) = mpsc::channel(10);
-
-            let connection = Connection {
-                status: Some(status_sender),
-                body: body_sender,
-                is_passive: false,
+            let action = match message {
+                Message::Request(request) => server::Action::Request(
+                    Connection {
+                        id: request.id,
+                        status: Some(status_sender),
+                        body: body_sender,
+                    },
+                    request,
+                ),
+                Message::Notification(notification) => server::Action::Deliver(
+                    Decision {
+                        status: status_sender,
+                    },
+                    server::Delivery::Notification(notification),
+                ),
+                Message::Response(response) => server::Action::Deliver(
+                    Decision {
+                        status: status_sender,
+                    },
+                    server::Delivery::Response(response),
+                ),
             };
 
-            if let Err(error) = sender
-                .send((connection, server::Action::Talk(message)))
-                .await
-            {
+            if let Err(error) = sender.send(action).await {
                 log::error!("{error}");
                 return Ok(internal_error());
             }
@@ -202,7 +229,7 @@ fn stream(
         HeaderValue::from_static("text/event-stream"),
     );
 
-    dbg!(response)
+    response
 }
 
 fn serialize<T: Serialize>(message: &Message<T>) -> Bytes {

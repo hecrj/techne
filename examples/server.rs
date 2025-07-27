@@ -6,18 +6,19 @@ use std::io;
 
 #[tokio::main]
 pub async fn main() -> io::Result<()> {
+    tracing_subscriber::fmt::init();
+
     let tools = [
-        tool(
-            say_hello,
-            "Says hello to someone!",
-            string("name", "The name to say hello to"),
-        ),
+        tool(say_hello, string("name", "The name to say hello to"))
+            .name("say_hello")
+            .description("Say hello to someone"),
         tool_2(
             add,
-            "Adds two integers",
             u32("a", "The first operand"),
             u32("b", "The second operand"),
-        ),
+        )
+        .name("add")
+        .description("Adds two integers"),
     ];
 
     let server = Server::new().tools(tools);

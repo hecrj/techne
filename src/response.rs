@@ -1,12 +1,16 @@
-use crate::Payload;
+pub mod initialize;
+pub mod tool;
+
+pub use initialize::Initialize;
+pub use tool::Tool;
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Response<T> {
+pub struct Response<T = serde_json::Value> {
     jsonrpc: String,
     id: u64,
-    result: Payload<T>,
+    result: T,
 }
 
 impl<T> Response<T> {
@@ -14,23 +18,7 @@ impl<T> Response<T> {
         Self {
             jsonrpc: "2.0".to_owned(),
             id,
-            result: Payload::new(result),
+            result,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Initialization {
-    pub capabilities: Capabilities,
-    pub server_info: ServerInfo,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Capabilities {}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerInfo {
-    pub name: String,
-    pub version: String,
 }

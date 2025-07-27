@@ -33,5 +33,7 @@ tokio.version = "1"
 tokio.features = ["io-util", "net"]
 
 [dev-dependencies]
+tracing-subscriber = "0.3"
+
 tokio.version = "1"
 tokio.features = ["macros", "rt", "rt-multi-thread"]

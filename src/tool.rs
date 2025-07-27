@@ -12,8 +12,9 @@ use std::error::Error;
 use std::io;
 use std::marker::PhantomData;
 
-pub struct Tool {
-    description: Cow<'static, str>,
+pub struct Tool<Name = Cow<'static, str>, Description = Cow<'static, str>> {
+    pub name: Name,
+    pub description: Description,
     input: Schema,
     output: Option<Schema>,
     call: Box<dyn Fn(serde_json::Value) -> io::Result<mpsc::Receiver<Action>> + Send + Sync>,
@@ -25,27 +26,47 @@ pub enum Action {
     Finish(io::Result<Outcome>),
 }
 
-impl Tool {
+impl Tool<(), ()> {
     /// # Safety
     /// The input and output schemas must match the `call` implementation.
     pub unsafe fn new(
-        description: impl Into<Cow<'static, str>>,
         input: Schema,
         output: Option<Schema>,
         call: impl Fn(serde_json::Value) -> io::Result<mpsc::Receiver<Action>> + Send + Sync + 'static,
     ) -> Self {
         Self {
-            description: description.into(),
+            name: (),
+            description: (),
             input,
             output,
             call: Box::new(call),
         }
     }
+}
 
-    pub fn description(&self) -> &str {
-        &self.description
+impl<Name, Description> Tool<Name, Description> {
+    pub fn name(self, name: impl Into<Cow<'static, str>>) -> Tool<Cow<'static, str>, Description> {
+        Tool {
+            name: name.into(),
+            description: self.description,
+            input: self.input,
+            output: self.output,
+            call: self.call,
+        }
     }
 
+    pub fn description(self, description: impl Into<Cow<'static, str>>) -> Tool<Name> {
+        Tool {
+            name: self.name,
+            description: description.into(),
+            input: self.input,
+            output: self.output,
+            call: self.call,
+        }
+    }
+}
+
+impl Tool {
     pub fn input(&self) -> &Schema {
         &self.input
     }
@@ -61,24 +82,29 @@ impl Tool {
 
 pub fn tool<A, O, F>(
     f: impl Fn(A) -> F + Send + Sync + 'static,
-    description: impl Into<Cow<'static, str>>,
     a: impl Argument<A> + Send + Sync + 'static,
-) -> Tool
+) -> Tool<(), ()>
 where
     O: IntoOutcome,
     O::Content: Serialize + Send,
     F: Future<Output = O> + Send + 'static,
 {
-    let input = a.schema();
+    let input = Schema::Object {
+        description: None,
+        properties: BTreeMap::from_iter([property(&a)]),
+        required: Vec::from_iter([required(&a)].into_iter().flatten()),
+    };
 
     let call = move |json| {
-        let a = a.deserialize(json)?;
+        let mut object = object(json)?;
+        let a = deserialize(&a, &mut object)?;
 
         Ok(spawn(f(a)))
     };
 
     Tool {
-        description: description.into(),
+        name: (),
+        description: (),
         input,
         output: None, // TODO
         call: Box::new(call),
@@ -87,10 +113,9 @@ where
 
 pub fn tool_2<A, B, O, F>(
     f: impl Fn(A, B) -> F + Send + Sync + 'static,
-    description: impl Into<Cow<'static, str>>,
     a: impl Argument<A> + Send + Sync + 'static,
     b: impl Argument<B> + Send + Sync + 'static,
-) -> Tool
+) -> Tool<(), ()>
 where
     O: IntoOutcome,
     O::Content: Serialize + Send,
@@ -111,7 +136,8 @@ where
     };
 
     Tool {
-        description: description.into(),
+        name: (),
+        description: (),
         input,
         output: None, // TODO
         call: Box::new(call),
@@ -354,9 +380,9 @@ where
                 is_error: false,
             },
             Err(error) => Outcome {
-                content: Content::Unstructured(content::Unstructured::Text {
+                content: Content::Unstructured(vec![content::Unstructured::Text {
                     text: error.to_string(),
-                }),
+                }]),
                 is_error: false,
             },
         }
