@@ -4,7 +4,7 @@ mod http;
 pub use http::Http;
 
 use crate::response;
-use crate::{Message, Notification, Request, Response};
+use crate::{Message, Notification, Request, Response, Tool};
 
 use futures::{Stream, StreamExt};
 use serde::Serialize;
@@ -14,11 +14,18 @@ use std::io;
 use std::sync::Arc;
 
 #[derive(Default)]
-pub struct Server;
+pub struct Server {
+    tools: Vec<Tool>,
+}
 
 impl Server {
     pub fn new() -> Self {
-        Self
+        Self { tools: Vec::new() }
+    }
+
+    pub fn tools(mut self, tools: impl IntoIterator<Item = Tool>) -> Self {
+        self.tools = tools.into_iter().collect();
+        self
     }
 
     pub async fn serve(&self, connection: impl Connection, action: Action) -> io::Result<()> {

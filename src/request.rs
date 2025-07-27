@@ -3,7 +3,7 @@ use crate::Payload;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Request<T> {
+pub struct Request<T = serde_json::Value> {
     pub jsonrpc: String,
     pub id: u64,
     pub method: String,
