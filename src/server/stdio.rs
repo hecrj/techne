@@ -1,5 +1,5 @@
 use crate::log;
-use crate::server;
+use crate::server::transport::{self, Action, Delivery, Transport};
 use crate::{Message, Notification, Request, Response};
 
 use futures::stream::{self, Stream, StreamExt};
@@ -37,7 +37,7 @@ impl<I, O> Stdio<I, O> {
     }
 }
 
-impl<I, O> server::Transport for Stdio<I, O>
+impl<I, O> Transport for Stdio<I, O>
 where
     I: AsyncRead + Unpin,
     O: AsyncWrite + Send + Unpin + 'static,
@@ -47,9 +47,8 @@ where
 
     async fn connect(
         &mut self,
-    ) -> io::Result<
-        impl Stream<Item = server::Action<Self::Connection, Self::Decision>> + Send + 'static,
-    > {
+    ) -> io::Result<impl Stream<Item = Action<Self::Connection, Self::Decision>> + Send + 'static>
+    {
         let n = self.input.read_line(&mut self.json).await?;
 
         if n == 0 {
@@ -67,7 +66,7 @@ where
         };
 
         let action = match message {
-            Message::Request(request) => server::Action::Request(
+            Message::Request(request) => Action::Request(
                 Connection {
                     id: request.id,
                     output: self.output.clone(),
@@ -75,11 +74,9 @@ where
                 request,
             ),
             Message::Notification(notification) => {
-                server::Action::Deliver(Decision, server::Delivery::Notification(notification))
+                Action::Deliver(Decision, Delivery::Notification(notification))
             }
-            Message::Response(response) => {
-                server::Action::Deliver(Decision, server::Delivery::Response(response))
-            }
+            Message::Response(response) => Action::Deliver(Decision, Delivery::Response(response)),
         };
 
         Ok(stream::once(async move { action }).boxed())
@@ -91,7 +88,7 @@ pub struct Connection {
     output: Arc<Mutex<dyn AsyncWrite + Send + Unpin>>,
 }
 
-impl server::Connection for Connection {
+impl transport::Connection for Connection {
     async fn request<T: Serialize + Send + Sync>(&mut self, request: Request<T>) -> io::Result<()> {
         write(request, self.output.lock().await.deref_mut()).await
     }
@@ -129,7 +126,7 @@ async fn write(
 
 pub struct Decision;
 
-impl server::Decision for Decision {
+impl transport::Decision for Decision {
     async fn accept(self) -> io::Result<()> {
         Ok(())
     }

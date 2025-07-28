@@ -1,4 +1,4 @@
-use crate::server;
+use crate::server::transport::{self, Action, Delivery, Transport};
 use crate::{Message, Notification, Request};
 
 use futures::channel::mpsc;
@@ -33,15 +33,14 @@ impl Http {
     }
 }
 
-impl server::Transport for Http {
+impl Transport for Http {
     type Connection = Connection;
     type Decision = Decision;
 
     async fn connect(
         &mut self,
-    ) -> io::Result<
-        impl Stream<Item = server::Action<Self::Connection, Self::Decision>> + Send + 'static,
-    > {
+    ) -> io::Result<impl Stream<Item = Action<Self::Connection, Self::Decision>> + Send + 'static>
+    {
         let (stream, _address) = self.listener.accept().await?;
         let stream = rt::TokioIo::new(stream);
 
@@ -67,7 +66,7 @@ pub struct Connection {
     body: mpsc::Sender<Bytes>,
 }
 
-impl crate::server::Connection for Connection {
+impl transport::Connection for Connection {
     fn request<T: Serialize>(
         &mut self,
         request: Request<T>,
@@ -131,7 +130,7 @@ pub struct Decision {
     status: oneshot::Sender<StatusCode>,
 }
 
-impl server::Decision for Decision {
+impl transport::Decision for Decision {
     fn accept(self) -> impl Future<Output = io::Result<()>> + Send {
         let _ = self.status.send(StatusCode::ACCEPTED);
 
@@ -147,7 +146,7 @@ impl server::Decision for Decision {
 
 async fn serve(
     request: hyper::Request<Incoming>,
-    mut sender: mpsc::Sender<server::Action<Connection, Decision>>,
+    mut sender: mpsc::Sender<Action<Connection, Decision>>,
 ) -> Result<hyper::Response<BoxBody<Bytes, Error>>, Error> {
     match request.uri().path() {
         "/" => {
@@ -166,7 +165,7 @@ async fn serve(
             };
 
             let action = match message {
-                Message::Request(request) => server::Action::Request(
+                Message::Request(request) => Action::Request(
                     Connection {
                         id: request.id,
                         status: Some(status_sender),
@@ -174,17 +173,17 @@ async fn serve(
                     },
                     request,
                 ),
-                Message::Notification(notification) => server::Action::Deliver(
+                Message::Notification(notification) => Action::Deliver(
                     Decision {
                         status: status_sender,
                     },
-                    server::Delivery::Notification(notification),
+                    Delivery::Notification(notification),
                 ),
-                Message::Response(response) => server::Action::Deliver(
+                Message::Response(response) => Action::Deliver(
                     Decision {
                         status: status_sender,
                     },
-                    server::Delivery::Response(response),
+                    Delivery::Response(response),
                 ),
             };
 

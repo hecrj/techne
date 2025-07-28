@@ -1,6 +1,9 @@
+pub mod transport;
+
 mod stdio;
 
 pub use stdio::Stdio;
+pub use transport::Transport;
 
 #[cfg(feature = "server-http")]
 mod http;
@@ -8,15 +11,16 @@ mod http;
 #[cfg(feature = "server-http")]
 pub use http::Http;
 
+use crate::Tool;
 use crate::request;
 use crate::response;
-use crate::{Notification, Request, Tool};
+use crate::server::transport::{Action, Connection, Decision};
 
-use futures::{Stream, StreamExt};
-use serde::Serialize;
+use futures::StreamExt;
 use tokio::task;
 
 use std::collections::BTreeMap;
+use std::env;
 use std::io;
 use std::sync::Arc;
 
@@ -72,6 +76,47 @@ impl Server {
                 Ok::<_, io::Error>(())
             }))
         }
+    }
+
+    pub async fn run_with_args(self, mut args: env::Args) -> io::Result<()> {
+        let _executable = args.next();
+
+        let protocol = args.next();
+        let protocol = protocol.as_deref();
+
+        if protocol == Some("--http") {
+            #[cfg(feature = "server-http")]
+            {
+                let address = args.next();
+                let address = address.as_deref().unwrap_or("127.0.0.1:8080");
+
+                let rest = args.next();
+
+                if let Some(rest) = rest {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("Unknown argument: {rest}"),
+                    ));
+                }
+
+                return self.run(Http::bind(address).await?).await;
+            }
+
+            #[cfg(not(feature = "server-http"))]
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Streamable HTTP is not supported for this server"),
+            ));
+        }
+
+        if let Some(protocol) = protocol {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unknown argument: {protocol}"),
+            ));
+        }
+
+        self.run(Stdio::current()).await
     }
 
     pub async fn serve<C: Connection, D: Decision>(&self, action: Action<C, D>) -> io::Result<()> {
@@ -164,54 +209,4 @@ impl Server {
 
         Ok(())
     }
-}
-
-#[derive(Debug)]
-pub enum Action<C, D> {
-    Request(C, Request),
-    Deliver(D, Delivery),
-}
-
-#[derive(Debug)]
-pub enum Delivery {
-    Notification(Notification),
-    Response(crate::Response),
-}
-
-pub trait Transport {
-    type Connection: Connection + Send + 'static;
-    type Decision: Decision + Send + 'static;
-
-    fn connect(
-        &mut self,
-    ) -> impl Future<
-        Output = io::Result<
-            impl Stream<Item = Action<Self::Connection, Self::Decision>> + Send + 'static,
-        >,
-    >;
-}
-
-pub trait Connection {
-    fn request<T: Serialize + Send + Sync>(
-        &mut self,
-        message: Request<T>,
-    ) -> impl Future<Output = io::Result<()>> + Send;
-
-    fn notify<T: Serialize + Send + Sync>(
-        &mut self,
-        message: Notification<T>,
-    ) -> impl Future<Output = io::Result<()>> + Send;
-
-    fn finish<T: Serialize + Send + Sync>(
-        self,
-        response: T,
-    ) -> impl Future<Output = io::Result<()>> + Send;
-
-    fn reject(self) -> impl Future<Output = io::Result<()>> + Send;
-}
-
-pub trait Decision {
-    fn accept(self) -> impl Future<Output = io::Result<()>> + Send;
-
-    fn reject(self) -> impl Future<Output = io::Result<()>> + Send;
 }
