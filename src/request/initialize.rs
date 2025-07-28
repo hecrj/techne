@@ -5,28 +5,20 @@ use serde::{Deserialize, Serialize};
 pub struct Initialize {
     pub protocol_version: String,
     pub capabilities: Capabilities,
-    pub server_info: ServerInfo,
+    pub client_info: ClientInfo,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Capabilities {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<Tools>,
+    // TODO: Roots
+    // TODO: Sampling
+    // TODO: Elicitation
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerInfo {
+pub struct ClientInfo {
     pub name: String,
+    #[serde(default)]
+    pub title: Option<String>,
     pub version: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Tools {
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub list_changed: bool,
-}
-
-fn is_false(b: &bool) -> bool {
-    !b
 }

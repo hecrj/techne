@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Response<T = serde_json::Value> {
-    jsonrpc: String,
-    id: u64,
-    result: T,
+    pub jsonrpc: String,
+    pub id: u64,
+    pub result: T,
 }
 
 impl<T> Response<T> {
