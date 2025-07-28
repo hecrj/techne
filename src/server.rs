@@ -81,6 +81,7 @@ impl Server {
 
                 match request.method.as_str() {
                     "initialize" => self.initialize(connection).await,
+                    "ping" => self.ping(connection).await,
                     "tools/list" => self.list_tools(connection).await,
                     "tools/call" => {
                         let call = request.deserialize()?;
@@ -112,6 +113,10 @@ impl Server {
                 },
             })
             .await
+    }
+
+    async fn ping(&self, connection: impl Connection) -> io::Result<()> {
+        connection.finish(serde_json::json!({})).await
     }
 
     async fn list_tools(&self, connection: impl Connection) -> io::Result<()> {
