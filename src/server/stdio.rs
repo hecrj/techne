@@ -64,7 +64,7 @@ impl Transport for Stdio {
                 Message::Notification(notification) => {
                     Action::Notify(Receipt::null(), notification)
                 }
-                Message::Response(response) => Action::Response(Receipt::null(), response),
+                Message::Response(response) => Action::Respond(Receipt::null(), response),
                 Message::Error(_) => continue,
             };
 

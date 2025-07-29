@@ -15,7 +15,7 @@ pub trait Transport {
 pub enum Action {
     Request(Connection, Request),
     Notify(Receipt, Notification),
-    Response(Receipt, Response),
+    Respond(Receipt, Response),
     Quit,
 }
 

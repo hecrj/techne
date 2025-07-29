@@ -101,7 +101,7 @@ async fn serve(
                     Action::Notify(Receipt::new(accept_sender), notification)
                 }
                 Message::Response(response) => {
-                    Action::Response(Receipt::new(accept_sender), response)
+                    Action::Respond(Receipt::new(accept_sender), response)
                 }
                 Message::Error(_) => {
                     return Ok(bad_request());

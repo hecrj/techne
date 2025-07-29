@@ -66,7 +66,7 @@ impl Server {
                     }));
                 }
                 Action::Notify(receipt, _notification) => receipt.reject(), // TODO
-                Action::Response(receipt, _response) => receipt.reject(),   // TODO
+                Action::Respond(receipt, _response) => receipt.reject(),    // TODO
                 Action::Quit => return Ok(()),
             }
         }
