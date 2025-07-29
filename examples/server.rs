@@ -21,7 +21,7 @@ pub async fn main() -> io::Result<()> {
         .description("Adds two integers"),
     ];
 
-    let server = Server::new().tools(tools);
+    let server = Server::new("techne-server-example", env!("CARGO_PKG_VERSION")).tools(tools);
     let transport = server::transport(env::args()).await?;
 
     server.run(transport).await

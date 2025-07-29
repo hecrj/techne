@@ -18,9 +18,7 @@ impl Stdio {
     pub fn current() -> Self {
         Stdio::custom(io::stdin(), io::stdout())
     }
-}
 
-impl Stdio {
     pub fn custom(
         input: impl AsyncRead + Send + Unpin + 'static,
         mut output: impl AsyncWrite + Send + Unpin + 'static,

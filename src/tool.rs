@@ -6,13 +6,12 @@ use futures::channel::mpsc;
 use serde::{Deserialize, Serialize};
 use tokio::task;
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io;
 use std::marker::PhantomData;
 
-pub struct Tool<Name = Cow<'static, str>, Description = Cow<'static, str>> {
+pub struct Tool<Name = String, Description = String> {
     pub name: Name,
     pub description: Description,
     input: Schema,
@@ -45,9 +44,9 @@ impl Tool<(), ()> {
 }
 
 impl<Name, Description> Tool<Name, Description> {
-    pub fn name(self, name: impl Into<Cow<'static, str>>) -> Tool<Cow<'static, str>, Description> {
+    pub fn name(self, name: impl AsRef<str>) -> Tool<String, Description> {
         Tool {
-            name: name.into(),
+            name: name.as_ref().to_owned(),
             description: self.description,
             input: self.input,
             output: self.output,
@@ -55,10 +54,10 @@ impl<Name, Description> Tool<Name, Description> {
         }
     }
 
-    pub fn description(self, description: impl Into<Cow<'static, str>>) -> Tool<Name> {
+    pub fn description(self, description: impl AsRef<str>) -> Tool<Name> {
         Tool {
             name: self.name,
-            description: description.into(),
+            description: description.as_ref().to_owned(),
             input: self.input,
             output: self.output,
             call: self.call,
@@ -178,31 +177,19 @@ pub trait Argument<T> {
     }
 }
 
-pub fn string(
-    name: impl Into<Cow<'static, str>>,
-    description: impl Into<Cow<'static, str>>,
-) -> impl Argument<String> {
+pub fn string(name: impl AsRef<str>, description: impl AsRef<str>) -> impl Argument<String> {
     NamedArg::new(name, description)
 }
 
-pub fn u32(
-    name: impl Into<Cow<'static, str>>,
-    description: impl Into<Cow<'static, str>>,
-) -> impl Argument<u32> {
+pub fn u32(name: impl AsRef<str>, description: impl AsRef<str>) -> impl Argument<u32> {
     NamedArg::new(name, description)
 }
 
-pub fn f32(
-    name: impl Into<Cow<'static, str>>,
-    description: impl Into<Cow<'static, str>>,
-) -> impl Argument<f32> {
+pub fn f32(name: impl AsRef<str>, description: impl AsRef<str>) -> impl Argument<f32> {
     NamedArg::new(name, description)
 }
 
-pub fn bool(
-    name: impl Into<Cow<'static, str>>,
-    description: impl Into<Cow<'static, str>>,
-) -> impl Argument<bool> {
+pub fn bool(name: impl AsRef<str>, description: impl AsRef<str>) -> impl Argument<bool> {
     NamedArg::new(name, description)
 }
 
@@ -244,15 +231,15 @@ pub fn optional<T>(argument: impl Argument<T>) -> impl Argument<Option<T>> {
 }
 
 struct NamedArg {
-    name: Cow<'static, str>,
-    description: Cow<'static, str>,
+    name: String,
+    description: String,
 }
 
 impl NamedArg {
-    fn new(name: impl Into<Cow<'static, str>>, description: impl Into<Cow<'static, str>>) -> Self {
+    fn new(name: impl AsRef<str>, description: impl AsRef<str>) -> Self {
         Self {
-            name: name.into(),
-            description: description.into(),
+            name: name.as_ref().to_owned(),
+            description: description.as_ref().to_owned(),
         }
     }
 }
@@ -264,7 +251,7 @@ impl Argument<String> for NamedArg {
 
     fn schema(&self) -> Schema {
         Schema::String {
-            description: Some(self.description.clone().into_owned()),
+            description: Some(self.description.clone()),
         }
     }
 
@@ -280,7 +267,7 @@ impl Argument<u32> for NamedArg {
 
     fn schema(&self) -> Schema {
         Schema::Integer {
-            description: Some(self.description.clone().into_owned()),
+            description: Some(self.description.clone()),
         }
     }
 
@@ -296,7 +283,7 @@ impl Argument<f32> for NamedArg {
 
     fn schema(&self) -> Schema {
         Schema::Number {
-            description: Some(self.description.clone().into_owned()),
+            description: Some(self.description.clone()),
         }
     }
 
@@ -312,7 +299,7 @@ impl Argument<bool> for NamedArg {
 
     fn schema(&self) -> Schema {
         Schema::Boolean {
-            description: Some(self.description.clone().into_owned()),
+            description: Some(self.description.clone()),
         }
     }
 

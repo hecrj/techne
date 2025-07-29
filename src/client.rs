@@ -12,7 +12,6 @@ use crate::{Message, Notification, Request, Response};
 use futures::FutureExt;
 use serde::Serialize;
 
-use std::borrow::Cow;
 use std::fmt;
 use std::io;
 use std::sync::Arc;
@@ -25,8 +24,8 @@ pub struct Client {
 
 impl Client {
     pub async fn new(
-        name: impl Into<Cow<'_, str>>,
-        version: impl Into<Cow<'_, str>>,
+        name: impl AsRef<str>,
+        version: impl AsRef<str>,
         transport: impl Transport + Send + Sync + 'static,
     ) -> io::Result<Self> {
         let mut connection = Connection {
@@ -41,9 +40,9 @@ impl Client {
                     protocol_version: crate::PROTOCOL_VERSION.to_owned(),
                     capabilities: request::initialize::Capabilities {},
                     client_info: request::initialize::ClientInfo {
-                        name: name.into().into_owned(),
+                        name: name.as_ref().to_owned(),
                         title: None, // TODO
-                        version: version.into().into_owned(),
+                        version: version.as_ref().to_owned(),
                     },
                 },
             )

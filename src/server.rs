@@ -26,12 +26,16 @@ use std::sync::Arc;
 
 #[derive(Default)]
 pub struct Server {
+    name: String,
+    version: String,
     tools: BTreeMap<String, Tool>,
 }
 
 impl Server {
-    pub fn new() -> Self {
+    pub fn new(name: impl AsRef<str>, version: impl AsRef<str>) -> Self {
         Self {
+            name: name.as_ref().to_owned(),
+            version: version.as_ref().to_owned(),
             tools: BTreeMap::new(),
         }
     }
@@ -39,7 +43,7 @@ impl Server {
     pub fn tools(mut self, tools: impl IntoIterator<Item = Tool>) -> Self {
         self.tools = tools
             .into_iter()
-            .map(|tool| (tool.name.clone().into_owned(), tool))
+            .map(|tool| (tool.name.clone(), tool))
             .collect();
 
         self
@@ -100,8 +104,8 @@ impl Server {
                     }),
                 },
                 server_info: initialize::ServerInfo {
-                    name: "techne-server".to_owned(),
-                    version: env!("CARGO_PKG_VERSION").to_owned(),
+                    name: self.name.clone(),
+                    version: self.version.clone(),
                 },
             })
             .await
@@ -120,9 +124,9 @@ impl Server {
                     .tools
                     .values()
                     .map(|tool| response::Tool {
-                        name: tool.name.clone().into_owned(),
+                        name: tool.name.clone(),
                         title: None,
-                        description: tool.description.clone().into_owned(),
+                        description: tool.description.clone(),
                         input_schema: tool.input().clone(),
                         output_schema: tool.output().cloned(),
                     })
