@@ -3,6 +3,7 @@ pub mod server;
 pub mod tool;
 
 mod content;
+mod error;
 mod log;
 mod message;
 mod notification;
@@ -16,6 +17,7 @@ pub use schema::Schema;
 pub use server::Server;
 pub use tool::Tool;
 
+use error::Error;
 use message::Message;
 use notification::Notification;
 use request::Request;

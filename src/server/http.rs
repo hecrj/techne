@@ -1,9 +1,8 @@
-use crate::server::transport::{self, Action, Delivery, Transport};
-use crate::{Message, Notification, Request};
+use crate::Message;
+use crate::server::transport::{Action, Connection, Receipt, Transport};
 
 use futures::channel::mpsc;
 use futures::channel::oneshot;
-use futures::future;
 use futures::{SinkExt, Stream, StreamExt};
 use http::header::{self, HeaderValue};
 use http::{Method, StatusCode};
@@ -15,138 +14,65 @@ use hyper::body::{Bytes, Frame, Incoming};
 use hyper::service::service_fn;
 use hyper_util::rt;
 use hyper_util::server::conn::auto;
-use serde::Serialize;
 use tokio::net;
 use tokio::task;
 
 use std::io;
 
 pub struct Http {
-    listener: net::TcpListener,
+    connections: mpsc::Receiver<io::Result<Action>>,
 }
 
 impl Http {
     pub async fn bind(address: impl net::ToSocketAddrs) -> io::Result<Self> {
         let listener = net::TcpListener::bind(address).await?;
+        let (mut sender, receiver) = mpsc::channel(10);
 
-        Ok(Self { listener })
+        drop(task::spawn(async move {
+            let service = service_fn(|request| serve(request, sender.clone()));
+
+            loop {
+                let stream = match listener.accept().await {
+                    Ok((stream, _address)) => rt::TokioIo::new(stream),
+                    Err(error) => {
+                        log::error!("{error}");
+                        let _ = sender.send(Err(error)).await;
+
+                        return;
+                    }
+                };
+
+                if let Err(error) = auto::Builder::new(rt::TokioExecutor::new())
+                    .serve_connection_with_upgrades(stream, service)
+                    .await
+                {
+                    log::error!("{error}");
+                }
+            }
+        }));
+
+        Ok(Self {
+            connections: receiver,
+        })
     }
 }
 
 impl Transport for Http {
-    type Connection = Connection;
-    type Decision = Decision;
-
-    async fn connect(
-        &mut self,
-    ) -> io::Result<impl Stream<Item = Action<Self::Connection, Self::Decision>> + Send + 'static>
-    {
-        let (stream, _address) = self.listener.accept().await?;
-        let stream = rt::TokioIo::new(stream);
-
-        let (sender, receiver) = mpsc::channel(10);
-        let service = service_fn(move |request| serve(request, sender.clone()));
-
-        drop(task::spawn(async move {
-            if let Err(error) = auto::Builder::new(rt::TokioExecutor::new())
-                .serve_connection_with_upgrades(stream, service)
-                .await
-            {
-                log::error!("{error}");
-            }
-        }));
-
-        Ok(receiver)
-    }
-}
-
-pub struct Connection {
-    id: u64,
-    status: Option<oneshot::Sender<StatusCode>>,
-    body: mpsc::Sender<Bytes>,
-}
-
-impl transport::Connection for Connection {
-    fn request<T: Serialize>(
-        &mut self,
-        request: Request<T>,
-    ) -> impl Future<Output = io::Result<()>> + Send {
-        if let Some(status) = self.status.take() {
-            let _ = status.send(StatusCode::OK);
+    async fn accept(&mut self) -> io::Result<Action> {
+        if let Some(result) = self.connections.next().await {
+            result
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "http worker stopped running",
+            ))
         }
-
-        let bytes = serialize(&Message::Request(request));
-
-        async {
-            let _ = self.body.send(bytes).await;
-
-            Ok(())
-        }
-    }
-
-    fn notify<T: Serialize>(
-        &mut self,
-        notification: Notification<T>,
-    ) -> impl Future<Output = io::Result<()>> + Send {
-        if let Some(status) = self.status.take() {
-            let _ = status.send(StatusCode::OK);
-        }
-
-        let bytes = serialize(&Message::Notification(notification));
-
-        async {
-            let _ = self.body.send(bytes).await;
-
-            Ok(())
-        }
-    }
-
-    fn finish<T: Serialize>(mut self, response: T) -> impl Future<Output = io::Result<()>> + Send {
-        if let Some(status) = self.status.take() {
-            let _ = status.send(StatusCode::OK);
-        }
-
-        let bytes = serialize(&Message::Response(crate::Response::new(self.id, response)));
-
-        log::debug!("Finishing connection: {bytes:?}");
-
-        async move {
-            let _ = self.body.send(bytes).await;
-
-            Ok(())
-        }
-    }
-
-    fn reject(mut self) -> impl Future<Output = io::Result<()>> + Send {
-        if let Some(status) = self.status.take() {
-            let _ = status.send(StatusCode::BAD_REQUEST);
-        }
-
-        future::ready(Ok(()))
-    }
-}
-
-pub struct Decision {
-    status: oneshot::Sender<StatusCode>,
-}
-
-impl transport::Decision for Decision {
-    fn accept(self) -> impl Future<Output = io::Result<()>> + Send {
-        let _ = self.status.send(StatusCode::ACCEPTED);
-
-        future::ready(Ok(()))
-    }
-
-    fn reject(self) -> impl Future<Output = io::Result<()>> + Send {
-        let _ = self.status.send(StatusCode::BAD_REQUEST);
-
-        future::ready(Ok(()))
     }
 }
 
 async fn serve(
     request: hyper::Request<Incoming>,
-    mut sender: mpsc::Sender<Action<Connection, Decision>>,
+    mut actions: mpsc::Sender<io::Result<Action>>,
 ) -> Result<hyper::Response<BoxBody<Bytes, Error>>, Error> {
     match request.uri().path() {
         "/" => {
@@ -155,8 +81,8 @@ async fn serve(
                 return Ok(status(StatusCode::METHOD_NOT_ALLOWED));
             }
 
-            let (status_sender, status_receiver) = oneshot::channel();
-            let (body_sender, body_receiver) = mpsc::channel(10);
+            let (sender, receiver) = mpsc::channel(10);
+            let (accept_sender, accept_receiver) = oneshot::channel();
 
             let bytes = request.into_body().collect().await?.to_bytes();
 
@@ -164,43 +90,41 @@ async fn serve(
                 return Ok(bad_request());
             };
 
+            let is_request = matches!(message, Message::Request(_));
+
             let action = match message {
-                Message::Request(request) => Action::Request(
-                    Connection {
-                        id: request.id,
-                        status: Some(status_sender),
-                        body: body_sender,
-                    },
-                    request,
-                ),
-                Message::Notification(notification) => Action::Deliver(
-                    Decision {
-                        status: status_sender,
-                    },
-                    Delivery::Notification(notification),
-                ),
-                Message::Response(response) => Action::Deliver(
-                    Decision {
-                        status: status_sender,
-                    },
-                    Delivery::Response(response),
-                ),
+                Message::Request(request) => {
+                    let _ = accept_sender.send(true);
+                    Action::Request(Connection::new(request.id, sender), request)
+                }
+                Message::Notification(notification) => {
+                    Action::Notify(Receipt::new(accept_sender), notification)
+                }
+                Message::Response(response) => {
+                    Action::Response(Receipt::new(accept_sender), response)
+                }
+                Message::Error(_) => {
+                    return Ok(bad_request());
+                }
             };
 
-            if let Err(error) = sender.send(action).await {
+            if let Err(error) = actions.send(Ok(action)).await {
                 log::error!("{error}");
                 return Ok(internal_error());
             }
 
-            let Ok(status_code) = status_receiver.await else {
-                return Ok(empty());
+            let Ok(true) = accept_receiver.await else {
+                return Ok(bad_request());
             };
 
-            if !status_code.is_success() {
-                return Ok(status(status_code));
-            }
-
-            Ok(stream(status_code, body_receiver))
+            Ok(stream(
+                if is_request {
+                    StatusCode::OK
+                } else {
+                    StatusCode::ACCEPTED
+                },
+                receiver,
+            ))
         }
         _ => Ok(not_found()),
     }
@@ -216,10 +140,10 @@ fn empty() -> Response {
 
 fn stream(
     status: StatusCode,
-    stream: impl Stream<Item = Bytes> + Send + Sync + 'static,
+    stream: impl Stream<Item = Message> + Send + Sync + 'static,
 ) -> Response {
     let mut response = Response::new(BoxBody::new(StreamBody::new(
-        stream.map(Frame::data).map(Ok),
+        stream.map(serialize).map(Frame::data).map(Ok),
     )));
 
     *response.status_mut() = status;
@@ -231,9 +155,11 @@ fn stream(
     response
 }
 
-fn serialize<T: Serialize>(message: &Message<T>) -> Bytes {
+fn serialize(message: Message) -> Bytes {
+    log::debug!("Serializing: {message:?}");
+
     let mut json: Vec<_> = "data: ".bytes().collect();
-    serde_json::to_writer(&mut json, message).expect("Message serialization failed");
+    serde_json::to_writer(&mut json, &message).expect("Message serialization failed");
     json.extend("\n\n".bytes());
 
     Bytes::from(json)

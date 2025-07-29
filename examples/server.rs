@@ -1,6 +1,6 @@
 use techne::Server;
-// use techne::server::Http;
-use techne::server::Stdio;
+use techne::server::Http;
+// use techne::server::Stdio;
 use techne::tool::{string, tool, tool_2, u32};
 
 use std::io;
@@ -23,8 +23,8 @@ pub async fn main() -> io::Result<()> {
     ];
 
     let server = Server::new().tools(tools);
-    // let transport = Http::bind("127.0.0.1:8080").await?;
-    let transport = Stdio::current();
+    let transport = Http::bind("127.0.0.1:8080").await?;
+    // let transport = Stdio::current();
 
     server.run(transport).await
 }

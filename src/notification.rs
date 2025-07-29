@@ -8,6 +8,19 @@ pub struct Notification<T = serde_json::Value> {
     params: Option<T>,
 }
 
+impl<T> Notification<T> {
+    pub fn serialize(self) -> serde_json::Result<Notification>
+    where
+        T: Serialize,
+    {
+        Ok(Notification {
+            jsonrpc: self.jsonrpc,
+            method: self.method,
+            params: self.params.map(serde_json::to_value).transpose()?,
+        })
+    }
+}
+
 fn none<T>() -> Option<T> {
     None
 }

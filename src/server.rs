@@ -11,12 +11,12 @@ mod http;
 #[cfg(feature = "server-http")]
 pub use http::Http;
 
-use crate::Tool;
+use crate::error;
 use crate::request;
 use crate::response;
-use crate::server::transport::{Action, Connection, Decision};
+use crate::server::transport::{Action, Connection};
+use crate::{Request, Tool};
 
-use futures::StreamExt;
 use tokio::task;
 
 use std::collections::BTreeMap;
@@ -49,32 +49,22 @@ impl Server {
         let server = Arc::new(self);
 
         loop {
-            let connect = transport.connect().await;
+            let action = transport.accept().await?;
 
-            let connections = match connect {
-                Ok(connections) => connections.boxed(),
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => {
-                    return Ok(());
+            match action {
+                Action::Request(connection, request) => {
+                    let server = server.clone();
+
+                    drop(task::spawn(async move {
+                        if let Err(error) = server.serve(connection, request).await {
+                            log::error!("{error}");
+                        }
+                    }));
                 }
-                Err(error) => {
-                    log::error!("{error}");
-
-                    return Err(error);
-                }
-            };
-
-            let mut connections = connections.boxed();
-            let server = server.clone();
-
-            drop(task::spawn(async move {
-                while let Some(action) = connections.next().await {
-                    if let Err(error) = server.serve(action).await {
-                        log::error!("{error}");
-                    }
-                }
-
-                Ok::<_, io::Error>(())
-            }))
+                Action::Notify(receipt, _notification) => receipt.reject(), // TODO
+                Action::Response(receipt, _response) => receipt.reject(),   // TODO
+                Action::Quit => return Ok(()),
+            }
         }
     }
 
@@ -119,34 +109,32 @@ impl Server {
         self.run(Stdio::current()).await
     }
 
-    pub async fn serve<C: Connection, D: Decision>(&self, action: Action<C, D>) -> io::Result<()> {
-        match action {
-            Action::Request(connection, request) => {
-                log::debug!("Serving {request:?}");
+    pub async fn serve(&self, connection: Connection, request: Request) -> io::Result<()> {
+        log::debug!("Serving {request:?}");
 
-                match request.method.as_str() {
-                    "initialize" => self.initialize(connection).await,
-                    "ping" => self.ping(connection).await,
-                    "tools/list" => self.list_tools(connection).await,
-                    "tools/call" => {
-                        let call = request.deserialize()?;
+        match request.method.as_str() {
+            "initialize" => self.initialize(connection).await,
+            "ping" => self.ping(connection).await,
+            "tools/list" => self.list_tools(connection).await,
+            "tools/call" => {
+                let call = request.deserialize()?;
 
-                        self.call_tool(connection, call).await
-                    }
-                    _ => connection.reject().await,
-                }
+                self.call_tool(connection, call).await
             }
-            // TODO: Out of channel deliveries
-            Action::Deliver(decision, _deliver) => decision.reject().await,
+            method => {
+                connection
+                    .error(error::method_not_found(format!("Unknown method: {method}")))
+                    .await
+            }
         }
     }
 
-    async fn initialize(&self, connection: impl Connection) -> io::Result<()> {
+    async fn initialize(&self, connection: Connection) -> io::Result<()> {
         use response::initialize;
 
         connection
             .finish(response::Initialize {
-                protocol_version: "2025-06-18".to_owned(),
+                protocol_version: crate::PROTOCOL_VERSION.to_owned(),
                 capabilities: initialize::Capabilities {
                     tools: (!self.tools.is_empty()).then_some(initialize::Tools {
                         list_changed: false, // TODO?
@@ -160,11 +148,11 @@ impl Server {
             .await
     }
 
-    async fn ping(&self, connection: impl Connection) -> io::Result<()> {
+    async fn ping(&self, connection: Connection) -> io::Result<()> {
         connection.finish(serde_json::json!({})).await
     }
 
-    async fn list_tools(&self, connection: impl Connection) -> io::Result<()> {
+    async fn list_tools(&self, connection: Connection) -> io::Result<()> {
         use response::tool;
 
         connection
@@ -186,13 +174,18 @@ impl Server {
 
     async fn call_tool(
         &self,
-        mut connection: impl Connection,
+        mut connection: Connection,
         call: request::tool::Call,
     ) -> io::Result<()> {
         use futures::StreamExt;
 
         let Some(tool) = self.tools.get(&call.name) else {
-            return connection.reject().await;
+            return connection
+                .error(error::invalid_params(format!(
+                    "Unknown tool: {}",
+                    &call.name
+                )))
+                .await;
         };
 
         let mut output = tool.call(call.arguments)?.boxed();

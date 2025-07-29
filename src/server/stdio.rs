@@ -1,20 +1,16 @@
+use crate::Message;
 use crate::log;
-use crate::server::transport::{self, Action, Delivery, Transport};
-use crate::{Message, Notification, Request, Response};
+use crate::server::transport::{Action, Connection, Receipt, Transport};
 
-use futures::stream::{self, Stream, StreamExt};
+use futures::StreamExt;
+use futures::channel::mpsc;
 use serde::Serialize;
-use tokio::io::{
-    self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Stdin, Stdout,
-};
-use tokio::sync::Mutex;
+use tokio::io::{self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Stdin};
+use tokio::task;
 
-use std::ops::DerefMut;
-use std::sync::Arc;
-
-pub struct Stdio<I = Stdin, O = Stdout> {
+pub struct Stdio<I = Stdin> {
     input: BufReader<I>,
-    output: Arc<Mutex<O>>,
+    output: mpsc::Sender<Message>,
     json: String,
 }
 
@@ -24,92 +20,61 @@ impl Stdio {
     }
 }
 
-impl<I, O> Stdio<I, O> {
-    pub fn custom(input: I, output: O) -> Self
+impl<I> Stdio<I> {
+    pub fn custom(input: I, mut output: impl AsyncWrite + Send + Unpin + 'static) -> Self
     where
         I: AsyncRead,
     {
+        let (sender, mut receiver) = mpsc::channel(10);
+
+        drop(task::spawn(async move {
+            while let Some(message) = receiver.next().await {
+                write(message, &mut output).await?;
+            }
+
+            Ok::<(), io::Error>(())
+        }));
+
         Self {
             input: BufReader::new(input),
-            output: Arc::new(Mutex::new(output)),
+            output: sender,
             json: String::new(),
         }
     }
 }
 
-impl<I, O> Transport for Stdio<I, O>
+impl<I> Transport for Stdio<I>
 where
     I: AsyncRead + Unpin,
-    O: AsyncWrite + Send + Unpin + 'static,
 {
-    type Connection = Connection;
-    type Decision = Decision;
+    async fn accept(&mut self) -> io::Result<Action> {
+        loop {
+            let n = self.input.read_line(&mut self.json).await?;
 
-    async fn connect(
-        &mut self,
-    ) -> io::Result<impl Stream<Item = Action<Self::Connection, Self::Decision>> + Send + 'static>
-    {
-        let n = self.input.read_line(&mut self.json).await?;
-
-        if n == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::Interrupted,
-                "client closed input pipe",
-            ));
-        }
-
-        let message = serde_json::from_str(&self.json).inspect_err(log::error);
-        self.json.clear();
-
-        let Ok(message) = message else {
-            return Ok(stream::empty().boxed());
-        };
-
-        let action = match message {
-            Message::Request(request) => Action::Request(
-                Connection {
-                    id: request.id,
-                    output: self.output.clone(),
-                },
-                request,
-            ),
-            Message::Notification(notification) => {
-                Action::Deliver(Decision, Delivery::Notification(notification))
+            if n == 0 {
+                return Ok(Action::Quit);
             }
-            Message::Response(response) => Action::Deliver(Decision, Delivery::Response(response)),
-        };
 
-        Ok(stream::once(async move { action }).boxed())
-    }
-}
+            let message = serde_json::from_str(&self.json).inspect_err(log::error);
+            self.json.clear();
 
-pub struct Connection {
-    id: u64,
-    output: Arc<Mutex<dyn AsyncWrite + Send + Unpin>>,
-}
+            let Ok(message) = message else {
+                continue;
+            };
 
-impl transport::Connection for Connection {
-    async fn request<T: Serialize + Send + Sync>(&mut self, request: Request<T>) -> io::Result<()> {
-        write(request, self.output.lock().await.deref_mut()).await
-    }
+            let action = match message {
+                Message::Request(request) => {
+                    Action::Request(Connection::new(request.id, self.output.clone()), request)
+                }
+                Message::Notification(notification) => {
+                    Action::Notify(Receipt::null(), notification)
+                }
+                Message::Response(response) => Action::Response(Receipt::null(), response),
+                Message::Error(_) => continue,
+            };
 
-    async fn notify<T: Serialize + Send + Sync>(
-        &mut self,
-        notification: Notification<T>,
-    ) -> io::Result<()> {
-        write(notification, self.output.lock().await.deref_mut()).await
-    }
-
-    async fn finish<T: Serialize + Send + Sync>(self, response: T) -> io::Result<()> {
-        write(
-            &Response::new(self.id, response),
-            self.output.lock().await.deref_mut(),
-        )
-        .await
-    }
-
-    async fn reject(self) -> io::Result<()> {
-        Ok(())
+            return Ok(action);
+        }
     }
 }
 
@@ -122,16 +87,4 @@ async fn write(
     writer.write_all(&json).await?;
     writer.write_u8(0xA).await?;
     writer.flush().await
-}
-
-pub struct Decision;
-
-impl transport::Decision for Decision {
-    async fn accept(self) -> io::Result<()> {
-        Ok(())
-    }
-
-    async fn reject(self) -> io::Result<()> {
-        Ok(())
-    }
 }

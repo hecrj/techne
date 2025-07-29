@@ -21,4 +21,15 @@ impl<T> Response<T> {
             result,
         }
     }
+
+    pub fn serialize(self) -> serde_json::Result<Response>
+    where
+        T: Serialize,
+    {
+        Ok(Response {
+            jsonrpc: self.jsonrpc,
+            id: self.id,
+            result: serde_json::to_value(self.result)?,
+        })
+    }
 }

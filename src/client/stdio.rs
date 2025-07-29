@@ -133,7 +133,7 @@ async fn run(
                         }
                     }
                 }
-                Message::Notification(_) | Message::Response(_) => {
+                Message::Notification(_) | Message::Response(_) | Message::Error(_) => {
                     write(&mut input, &message).await?;
                 }
             },
