@@ -5,11 +5,11 @@ use crate::server::transport::{Action, Connection, Receipt, Transport};
 use futures::StreamExt;
 use futures::channel::mpsc;
 use serde::Serialize;
-use tokio::io::{self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Stdin};
+use tokio::io::{self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::task;
 
-pub struct Stdio<I = Stdin> {
-    input: BufReader<I>,
+pub struct Stdio {
+    input: BufReader<Box<dyn AsyncRead + Send + Unpin>>,
     output: mpsc::Sender<Message>,
     json: String,
 }
@@ -20,11 +20,11 @@ impl Stdio {
     }
 }
 
-impl<I> Stdio<I> {
-    pub fn custom(input: I, mut output: impl AsyncWrite + Send + Unpin + 'static) -> Self
-    where
-        I: AsyncRead,
-    {
+impl Stdio {
+    pub fn custom(
+        input: impl AsyncRead + Send + Unpin + 'static,
+        mut output: impl AsyncWrite + Send + Unpin + 'static,
+    ) -> Self {
         let (sender, mut receiver) = mpsc::channel(10);
 
         drop(task::spawn(async move {
@@ -36,17 +36,14 @@ impl<I> Stdio<I> {
         }));
 
         Self {
-            input: BufReader::new(input),
+            input: BufReader::new(Box::new(input)),
             output: sender,
             json: String::new(),
         }
     }
 }
 
-impl<I> Transport for Stdio<I>
-where
-    I: AsyncRead + Unpin,
-{
+impl Transport for Stdio {
     async fn accept(&mut self) -> io::Result<Action> {
         loop {
             let n = self.input.read_line(&mut self.json).await?;

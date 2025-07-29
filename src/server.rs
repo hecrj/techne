@@ -68,47 +68,6 @@ impl Server {
         }
     }
 
-    pub async fn run_with_args(self, mut args: env::Args) -> io::Result<()> {
-        let _executable = args.next();
-
-        let protocol = args.next();
-        let protocol = protocol.as_deref();
-
-        if protocol == Some("--http") {
-            #[cfg(feature = "server-http")]
-            {
-                let address = args.next();
-                let address = address.as_deref().unwrap_or("127.0.0.1:8080");
-
-                let rest = args.next();
-
-                if let Some(rest) = rest {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!("Unknown argument: {rest}"),
-                    ));
-                }
-
-                return self.run(Http::bind(address).await?).await;
-            }
-
-            #[cfg(not(feature = "server-http"))]
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Streamable HTTP is not supported for this server"),
-            ));
-        }
-
-        if let Some(protocol) = protocol {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("unknown argument: {protocol}"),
-            ));
-        }
-
-        self.run(Stdio::current()).await
-    }
-
     pub async fn serve(&self, connection: Connection, request: Request) -> io::Result<()> {
         log::debug!("Serving {request:?}");
 
@@ -202,4 +161,63 @@ impl Server {
 
         Ok(())
     }
+}
+
+pub async fn transport(mut args: env::Args) -> io::Result<impl Transport> {
+    enum HttpOrStdio {
+        #[cfg(feature = "server-http")]
+        Http(Http),
+        Stdio(Stdio),
+    }
+
+    impl Transport for HttpOrStdio {
+        fn accept(&mut self) -> impl Future<Output = io::Result<Action>> {
+            use futures::FutureExt;
+
+            match self {
+                #[cfg(feature = "server-http")]
+                HttpOrStdio::Http(http) => http.accept().boxed(),
+                HttpOrStdio::Stdio(stdio) => stdio.accept().boxed(),
+            }
+        }
+    }
+
+    let _executable = args.next();
+
+    let protocol = args.next();
+    let protocol = protocol.as_deref();
+
+    if protocol == Some("--http") {
+        #[cfg(feature = "server-http")]
+        {
+            let address = args.next();
+            let address = address.as_deref().unwrap_or("127.0.0.1:8080");
+
+            let rest = args.next();
+
+            if let Some(rest) = rest {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Unknown argument: {rest}"),
+                ));
+            }
+
+            return Ok(HttpOrStdio::Http(Http::bind(address).await?));
+        }
+
+        #[cfg(not(feature = "server-http"))]
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Streamable HTTP is not supported for this server"),
+        ));
+    }
+
+    if let Some(protocol) = protocol {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unknown argument: {protocol}"),
+        ));
+    }
+
+    Ok(HttpOrStdio::Stdio(Stdio::current()))
 }
