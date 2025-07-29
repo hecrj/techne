@@ -8,6 +8,9 @@ use std::io;
 pub async fn main() -> io::Result<()> {
     tracing_subscriber::fmt::init();
 
+    let server = Server::new("techne-server-example", env!("CARGO_PKG_VERSION"));
+    let transport = server::transport(env::args()).await?;
+
     let tools = [
         tool(say_hello, string("name", "The name to say hello to"))
             .name("say_hello")
@@ -21,10 +24,7 @@ pub async fn main() -> io::Result<()> {
         .description("Adds two integers"),
     ];
 
-    let server = Server::new("techne-server-example", env!("CARGO_PKG_VERSION")).tools(tools);
-    let transport = server::transport(env::args()).await?;
-
-    server.run(transport).await
+    server.tools(tools).run(transport).await
 }
 
 async fn say_hello(name: String) -> String {

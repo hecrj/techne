@@ -23,8 +23,7 @@ An MCP implementation for Rust focused on simplicity and type-safety.
 - Latest protocol version (`2025-06-18`)
 
 ## Server
-List any Rust functions you want to expose as tools, then create a `Server` and
-run it with your desired transport:
+Create a `Server`, choose your desired transport, list your tools, and run:
 
 ```rust
 use techne::Server;
@@ -35,16 +34,16 @@ use std::io;
 
 #[tokio::main]
 pub async fn main() -> io::Result<()> {
+    let server = Server::new("techne-server-example", env!("CARGO_PKG_VERSION"));
+    let transport = Http::bind("127.0.0.1:8080").await?;
+
     let tools = [
         tool(say_hello, string("name", "The name to say hello to"))
             .name("say_hello")
             .description("Say hello to someone"),
     ];
 
-    let server = Server::new().tools(tools);
-    let transport = Http::bind("127.0.0.1:8080").await?;
-
-    server.run(transport).await
+    server.tools(tools).run(transport).await
 }
 
 async fn say_hello(name: String) -> String {
