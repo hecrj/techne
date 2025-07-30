@@ -14,14 +14,6 @@ pub struct Response<T = serde_json::Value> {
 }
 
 impl<T> Response<T> {
-    pub fn new(id: u64, result: T) -> Self {
-        Self {
-            jsonrpc: "2.0".to_owned(),
-            id,
-            result,
-        }
-    }
-
     pub fn serialize(self) -> serde_json::Result<Response>
     where
         T: Serialize,

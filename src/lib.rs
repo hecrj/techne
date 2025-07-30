@@ -4,7 +4,6 @@ pub mod tool;
 
 mod content;
 mod error;
-mod log;
 mod message;
 mod notification;
 mod request;

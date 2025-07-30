@@ -1,9 +1,11 @@
 use crate::Message;
-use crate::log;
+use crate::error;
+use crate::notification;
+use crate::request;
 use crate::server::transport::{Action, Connection, Receipt, Transport};
 
-use futures::StreamExt;
 use futures::channel::mpsc;
+use futures::{SinkExt, StreamExt};
 use serde::Serialize;
 use tokio::io::{self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::task;
@@ -44,28 +46,34 @@ impl Stdio {
 impl Transport for Stdio {
     async fn accept(&mut self) -> io::Result<Action> {
         loop {
-            let n = self.input.read_line(&mut self.json).await?;
+            self.json.clear();
 
-            if n == 0 {
+            if self.input.read_line(&mut self.json).await? == 0 {
                 return Ok(Action::Quit);
             }
 
-            let message = serde_json::from_str(&self.json).inspect_err(log::error);
-            self.json.clear();
+            let message = match Message::deserialize(self.json.as_bytes()) {
+                Ok(message) => message,
+                Err(error) => {
+                    log::error!("{error}");
 
-            let Ok(message) = message else {
-                continue;
+                    let _ = self.output.send(Message::Error(error)).await;
+                    continue;
+                }
             };
 
             let action = match message {
-                Message::Request(request) => {
-                    Action::Request(Connection::new(request.id, self.output.clone()), request)
+                Message::Request(request::Message { id, request, .. }) => {
+                    Action::Request(Connection::new(id, self.output.clone()), request)
                 }
-                Message::Notification(notification) => {
+                Message::Notification(notification::Message { notification, .. }) => {
                     Action::Notify(Receipt::null(), notification)
                 }
                 Message::Response(response) => Action::Respond(Receipt::null(), response),
-                Message::Error(_) => continue,
+                Message::Error(error::Message { error, .. }) => {
+                    log::error!("{error}");
+                    continue;
+                }
             };
 
             return Ok(action);

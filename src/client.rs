@@ -9,9 +9,6 @@ use crate::request;
 use crate::response;
 use crate::{Message, Notification, Request, Response};
 
-use futures::FutureExt;
-use serde::Serialize;
-
 use std::fmt;
 use std::io;
 use std::sync::Arc;
@@ -34,18 +31,15 @@ impl Client {
         };
 
         let initialize = connection
-            .request(
-                "initialize",
-                request::Initialize {
-                    protocol_version: crate::PROTOCOL_VERSION.to_owned(),
-                    capabilities: request::initialize::Capabilities {},
-                    client_info: request::initialize::ClientInfo {
-                        name: name.as_ref().to_owned(),
-                        title: None, // TODO
-                        version: version.as_ref().to_owned(),
-                    },
+            .request(request::Initialize {
+                protocol_version: crate::PROTOCOL_VERSION.to_owned(),
+                capabilities: request::initialize::Capabilities {},
+                client_info: request::initialize::ClientInfo {
+                    name: name.as_ref().to_owned(),
+                    title: None, // TODO
+                    version: version.as_ref().to_owned(),
                 },
-            )
+            })
             .await?
             .response::<response::Initialize>()
             .await?;
@@ -61,6 +55,8 @@ impl Client {
             ));
         }
 
+        connection.notify(Notification::Initialized).await?;
+
         Ok(Self {
             connection,
             server: Server {
@@ -75,10 +71,7 @@ impl Client {
     }
 
     pub async fn list_tools(&mut self) -> io::Result<Vec<response::Tool>> {
-        let mut list = self
-            .connection
-            .request("tools/list", serde_json::json!({}))
-            .await?;
+        let mut list = self.connection.request(Request::ToolsList {}).await?;
 
         let Response {
             result: response::tool::List { tools },
@@ -95,37 +88,33 @@ struct Connection {
 }
 
 impl Connection {
-    fn request<T: Serialize + Send + 'static>(
-        &mut self,
-        method: &'static str,
-        params: T,
-    ) -> transport::Task {
-        let transport = self.transport.clone();
-        let id = self.request;
+    async fn request(&mut self, request: impl Into<Request>) -> io::Result<transport::Receiver> {
+        let request = request.into();
 
+        let id = self.request;
         self.request += 1;
 
-        async move {
-            transport
-                .send(Message::Request(Request {
-                    jsonrpc: crate::JSONRPC.to_owned(),
-                    id,
-                    method: method.to_owned(),
-                    params: Some(serde_json::to_value(params)?),
-                }))
-                .await
-        }
-        .boxed()
+        self.transport
+            .send(Message::Request(request.stamp(id)))
+            .await
     }
 
     #[allow(unused)]
-    fn notify(&self, notification: Notification) -> transport::Task {
-        self.transport.send(Message::Notification(notification))
+    async fn notify(&self, notification: impl Into<Notification>) -> io::Result<()> {
+        let notification = notification.into();
+
+        self.transport
+            .send(Message::Notification(notification.stamp()))
+            .await?;
+
+        Ok(())
     }
 
     #[allow(unused)]
-    fn response(&self, response: Response) -> transport::Task {
-        self.transport.send(Message::Response(response))
+    async fn response(&self, response: Response) -> io::Result<()> {
+        self.transport.send(Message::Response(response)).await;
+
+        Ok(())
     }
 }
 

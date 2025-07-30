@@ -3,38 +3,47 @@ pub mod tool;
 
 pub use initialize::Initialize;
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Request<T = serde_json::Value> {
-    pub jsonrpc: String,
-    pub id: u64,
-    pub method: String,
-    #[serde(default = "none")]
-    pub params: Option<T>,
+#[serde(tag = "method")]
+pub enum Request {
+    #[serde(rename = "initialize")]
+    Initialize { params: Initialize },
+    #[serde(rename = "ping")]
+    Ping,
+    #[serde(rename = "tools/list")]
+    ToolsList,
+    #[serde(rename = "tools/call")]
+    ToolsCall { params: tool::Call },
 }
 
-impl<T> Request<T> {
-    pub fn serialize(self) -> serde_json::Result<Request>
-    where
-        T: Serialize,
-    {
-        Ok(Request {
-            jsonrpc: self.jsonrpc,
-            id: self.id,
-            method: self.method,
-            params: self.params.map(serde_json::to_value).transpose()?,
-        })
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    jsonrpc: String,
+    pub id: u64,
+    #[serde(flatten)]
+    pub request: Request,
 }
 
 impl Request {
-    pub fn deserialize<T: DeserializeOwned>(self) -> serde_json::Result<T> {
-        serde_json::from_value(self.params.unwrap_or(serde_json::Value::Null))
+    pub fn stamp(self, id: u64) -> Message {
+        Message {
+            jsonrpc: crate::JSONRPC.to_owned(),
+            id,
+            request: self,
+        }
     }
 }
 
-fn none<T>() -> Option<T> {
-    None
+impl From<Initialize> for Request {
+    fn from(initialize: Initialize) -> Self {
+        Self::Initialize { params: initialize }
+    }
+}
+
+impl From<tool::Call> for Request {
+    fn from(call: tool::Call) -> Self {
+        Self::ToolsCall { params: call }
+    }
 }

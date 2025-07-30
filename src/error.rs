@@ -1,49 +1,60 @@
 use serde::{Deserialize, Serialize};
 
+use std::fmt;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Error<T = serde_json::Value> {
-    pub jsonrpc: String,
-    pub id: u64,
-    pub error: Body<T>,
+pub struct Error {
+    code: i64,
+    message: String,
 }
 
-impl<T> Error<T> {
-    pub fn serialize(self) -> serde_json::Result<Error>
-    where
-        T: Serialize,
-    {
-        Ok(Error {
-            jsonrpc: self.jsonrpc,
-            id: self.id,
-            error: Body {
-                code: self.error.code,
-                message: self.error.message,
-                data: self.error.data.map(serde_json::to_value).transpose()?,
-            },
-        })
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    jsonrpc: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<u64>,
+    pub error: Error,
+}
+
+impl Error {
+    fn new(code: i64, message: String) -> Self {
+        Self { code, message }
+    }
+
+    pub fn invalid_json(message: String) -> Self {
+        Self::new(-32700, message)
+    }
+
+    pub fn method_not_found(method: String) -> Self {
+        Self::new(-32601, format!("Unknown method: {method}"))
+    }
+
+    pub fn invalid_params(message: String) -> Self {
+        Self::new(-32602, message)
+    }
+
+    pub fn stamp(self, id: Option<u64>) -> Message {
+        Message {
+            jsonrpc: crate::JSONRPC.to_owned(),
+            id,
+            error: self,
+        }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Body<T = serde_json::Value> {
-    code: i64,
-    message: String,
-    #[serde(flatten)]
-    data: Option<T>,
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{message} ({code})",
+            message = self.message,
+            code = self.code
+        )
+    }
 }
 
-pub fn method_not_found(message: String) -> Body {
-    empty(-32601, message)
-}
-
-pub fn invalid_params(message: String) -> Body {
-    empty(-32602, message)
-}
-
-fn empty(code: i64, message: String) -> Body {
-    Body {
-        code,
-        message,
-        data: None,
+impl fmt::Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.error.fmt(f)
     }
 }

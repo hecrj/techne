@@ -1,4 +1,3 @@
-use crate::error;
 use crate::{Error, Message, Notification, Request, Response};
 
 use futures::SinkExt;
@@ -23,41 +22,47 @@ pub enum Action {
 pub struct Connection {
     id: u64,
     sender: mpsc::Sender<Message>,
+    total_requests: u64,
 }
 
 impl Connection {
     pub fn new(id: u64, sender: mpsc::Sender<Message>) -> Self {
-        Self { id, sender }
+        Self {
+            id,
+            sender,
+            total_requests: 0,
+        }
     }
 
-    pub async fn request<T: Serialize>(&mut self, request: Request<T>) -> io::Result<()> {
-        self.send(Message::Request(request)).await
+    pub async fn request(&mut self, request: Request) -> io::Result<()> {
+        let id = self.total_requests;
+        self.total_requests += 1;
+
+        self.send(Message::Request(request.stamp(id))).await
     }
 
-    pub async fn notify<T: Serialize>(&mut self, notification: Notification<T>) -> io::Result<()> {
-        self.send(Message::Notification(notification)).await
+    pub async fn notify(&mut self, notification: Notification) -> io::Result<()> {
+        self.send(Message::Notification(notification.stamp())).await
     }
 
-    pub async fn error<T: Serialize>(mut self, error: error::Body<T>) -> io::Result<()> {
-        self.send(Message::Error(Error {
-            jsonrpc: crate::JSONRPC.to_owned(),
-            id: self.id,
-            error,
-        }))
-        .await
+    pub async fn error(mut self, error: Error) -> io::Result<()> {
+        self.send(Message::Error(error.stamp(Some(self.id)))).await
     }
 
     pub async fn finish<T: Serialize>(mut self, result: T) -> io::Result<()> {
-        self.send(Message::Response(Response {
-            jsonrpc: crate::JSONRPC.to_owned(),
-            id: self.id,
-            result,
-        }))
+        self.send(Message::Response(
+            Response {
+                jsonrpc: crate::JSONRPC.to_owned(),
+                id: self.id,
+                result,
+            }
+            .serialize()?,
+        ))
         .await
     }
 
-    pub async fn send<T: Serialize>(&mut self, message: Message<T>) -> io::Result<()> {
-        let _ = self.sender.send(message.serialize()?).await;
+    pub async fn send(&mut self, message: Message) -> io::Result<()> {
+        let _ = self.sender.send(message).await;
 
         Ok(())
     }

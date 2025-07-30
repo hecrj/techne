@@ -1,4 +1,5 @@
 use crate::Message;
+use crate::error;
 use crate::server::transport::{Action, Connection, Receipt, Transport};
 
 use futures::channel::mpsc;
@@ -9,7 +10,6 @@ use http::{Method, StatusCode};
 use http_body_util::StreamBody;
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Empty};
-use hyper::Error;
 use hyper::body::{Bytes, Frame, Incoming};
 use hyper::service::service_fn;
 use hyper_util::rt;
@@ -73,7 +73,7 @@ impl Transport for Http {
 async fn serve(
     request: hyper::Request<Incoming>,
     mut actions: mpsc::Sender<io::Result<Action>>,
-) -> Result<hyper::Response<BoxBody<Bytes, Error>>, Error> {
+) -> Result<Response, hyper::Error> {
     match request.uri().path() {
         "/" => {
             // TODO: Subscriptions (?)
@@ -81,30 +81,33 @@ async fn serve(
                 return Ok(status(StatusCode::METHOD_NOT_ALLOWED));
             }
 
-            let (sender, receiver) = mpsc::channel(10);
-            let (accept_sender, accept_receiver) = oneshot::channel();
-
             let bytes = request.into_body().collect().await?.to_bytes();
+            let message = match Message::deserialize(&bytes) {
+                Ok(message) => message,
+                Err(error) => {
+                    log::error!("{error}");
 
-            let Ok(message): Result<Message, _> = serde_json::from_slice(&bytes) else {
-                return Ok(bad_request());
+                    return Ok(protocol_error(error));
+                }
             };
 
+            let (sender, receiver) = mpsc::channel(10);
+            let (accept_sender, accept_receiver) = oneshot::channel();
             let is_request = matches!(message, Message::Request(_));
 
             let action = match message {
-                Message::Request(request) => {
+                Message::Request(message) => {
                     let _ = accept_sender.send(true);
-                    Action::Request(Connection::new(request.id, sender), request)
+                    Action::Request(Connection::new(message.id, sender), message.request)
                 }
-                Message::Notification(notification) => {
-                    Action::Notify(Receipt::new(accept_sender), notification)
+                Message::Notification(message) => {
+                    Action::Notify(Receipt::new(accept_sender), message.notification)
                 }
                 Message::Response(response) => {
                     Action::Respond(Receipt::new(accept_sender), response)
                 }
-                Message::Error(_) => {
-                    return Ok(bad_request());
+                Message::Error(error) => {
+                    return Ok(protocol_error(error));
                 }
             };
 
@@ -171,6 +174,15 @@ fn bad_request() -> Response {
 
 fn not_found() -> Response {
     status(StatusCode::NOT_FOUND)
+}
+
+fn protocol_error(error: error::Message) -> Response {
+    use futures::stream;
+
+    stream(
+        StatusCode::BAD_REQUEST,
+        stream::once(async move { Message::Error(error) }),
+    )
 }
 
 fn internal_error() -> Response {

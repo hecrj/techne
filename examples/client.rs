@@ -5,6 +5,8 @@ use std::io;
 
 #[tokio::main]
 pub async fn main() -> io::Result<()> {
+    tracing_subscriber::fmt::init();
+
     let transport = Stdio::run("cargo", ["run", "--example", "server"])?;
 
     let mut client = Client::new(

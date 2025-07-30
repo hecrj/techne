@@ -11,11 +11,10 @@ mod http;
 #[cfg(feature = "server-http")]
 pub use http::Http;
 
-use crate::error;
 use crate::request;
 use crate::response;
 use crate::server::transport::{Action, Connection};
-use crate::{Request, Tool};
+use crate::{Error, Request, Tool};
 
 use tokio::task;
 
@@ -75,20 +74,11 @@ impl Server {
     pub async fn serve(&self, connection: Connection, request: Request) -> io::Result<()> {
         log::debug!("Serving {request:?}");
 
-        match request.method.as_str() {
-            "initialize" => self.initialize(connection).await,
-            "ping" => self.ping(connection).await,
-            "tools/list" => self.list_tools(connection).await,
-            "tools/call" => {
-                let call = request.deserialize()?;
-
-                self.call_tool(connection, call).await
-            }
-            method => {
-                connection
-                    .error(error::method_not_found(format!("Unknown method: {method}")))
-                    .await
-            }
+        match request {
+            Request::Initialize { .. } => self.initialize(connection).await,
+            Request::Ping => self.ping(connection).await,
+            Request::ToolsList => self.list_tools(connection).await,
+            Request::ToolsCall { params: call } => self.call_tool(connection, call).await,
         }
     }
 
@@ -144,7 +134,7 @@ impl Server {
 
         let Some(tool) = self.tools.get(&call.name) else {
             return connection
-                .error(error::invalid_params(format!(
+                .error(Error::invalid_params(format!(
                     "Unknown tool: {}",
                     &call.name
                 )))

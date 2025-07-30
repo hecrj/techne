@@ -1,26 +1,23 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Notification<T = serde_json::Value> {
+#[serde(tag = "method", rename_all = "lowercase")]
+pub enum Notification {
+    Initialized,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
     jsonrpc: String,
-    method: String,
-    #[serde(default = "none")]
-    params: Option<T>,
+    #[serde(flatten)]
+    pub notification: Notification,
 }
 
-impl<T> Notification<T> {
-    pub fn serialize(self) -> serde_json::Result<Notification>
-    where
-        T: Serialize,
-    {
-        Ok(Notification {
-            jsonrpc: self.jsonrpc,
-            method: self.method,
-            params: self.params.map(serde_json::to_value).transpose()?,
-        })
+impl Notification {
+    pub fn stamp(self) -> Message {
+        Message {
+            jsonrpc: crate::JSONRPC.to_owned(),
+            notification: self,
+        }
     }
-}
-
-fn none<T>() -> Option<T> {
-    None
 }
