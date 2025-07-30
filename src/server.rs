@@ -1,20 +1,20 @@
 pub mod transport;
 
-mod stdio;
-
-pub use stdio::Stdio;
-pub use transport::Transport;
-
 #[cfg(feature = "server-http")]
 mod http;
+mod stdio;
 
 #[cfg(feature = "server-http")]
 pub use http::Http;
+pub use stdio::Stdio;
+pub use transport::Transport;
 
-use crate::request;
-use crate::response;
+use crate::Tool;
+use crate::mcp;
+use crate::mcp::client;
+use crate::mcp::server;
+use crate::mcp::server::response::{self, Response};
 use crate::server::transport::{Action, Connection};
-use crate::{Error, Request, Tool};
 
 use tokio::task;
 
@@ -71,29 +71,29 @@ impl Server {
         }
     }
 
-    pub async fn serve(&self, connection: Connection, request: Request) -> io::Result<()> {
+    pub async fn serve(&self, connection: Connection, request: client::Request) -> io::Result<()> {
         log::debug!("Serving {request:?}");
 
         match request {
-            Request::Initialize { .. } => self.initialize(connection).await,
-            Request::Ping => self.ping(connection).await,
-            Request::ToolsList => self.list_tools(connection).await,
-            Request::ToolsCall { params: call } => self.call_tool(connection, call).await,
+            client::Request::Initialize { .. } => self.initialize(connection).await,
+            client::Request::Ping => self.ping(connection).await,
+            client::Request::ToolsList => self.list_tools(connection).await,
+            client::Request::ToolsCall { params: call } => self.call_tool(connection, call).await,
         }
     }
 
     async fn initialize(&self, connection: Connection) -> io::Result<()> {
-        use response::initialize;
+        use crate::mcp::server::capabilities::{self, Capabilities};
 
         connection
             .finish(response::Initialize {
                 protocol_version: crate::PROTOCOL_VERSION.to_owned(),
-                capabilities: initialize::Capabilities {
-                    tools: (!self.tools.is_empty()).then_some(initialize::Tools {
+                capabilities: Capabilities {
+                    tools: (!self.tools.is_empty()).then_some(capabilities::Tools {
                         list_changed: false, // TODO?
                     }),
                 },
-                server_info: initialize::ServerInfo {
+                server_info: mcp::Server {
                     name: self.name.clone(),
                     version: self.version.clone(),
                 },
@@ -102,18 +102,16 @@ impl Server {
     }
 
     async fn ping(&self, connection: Connection) -> io::Result<()> {
-        connection.finish(serde_json::json!({})).await
+        connection.finish(Response::Ping).await
     }
 
     async fn list_tools(&self, connection: Connection) -> io::Result<()> {
-        use response::tool;
-
         connection
-            .finish(tool::List {
+            .finish(response::ToolsList {
                 tools: self
                     .tools
                     .values()
-                    .map(|tool| response::Tool {
+                    .map(|tool| server::Tool {
                         name: tool.name.clone(),
                         title: None,
                         description: tool.description.clone(),
@@ -128,13 +126,13 @@ impl Server {
     async fn call_tool(
         &self,
         mut connection: Connection,
-        call: request::tool::Call,
+        call: client::request::ToolCall,
     ) -> io::Result<()> {
         use futures::StreamExt;
 
         let Some(tool) = self.tools.get(&call.name) else {
             return connection
-                .error(Error::invalid_params(format!(
+                .error(mcp::Error::invalid_params(format!(
                     "Unknown tool: {}",
                     &call.name
                 )))

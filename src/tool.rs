@@ -1,13 +1,13 @@
-use crate::content;
-use crate::{Content, Notification, Request, Schema};
+use crate::mcp::Schema;
+use crate::mcp::server::tool::{IntoOutcome, Outcome};
+use crate::mcp::server::{Notification, Request};
 
 use futures::SinkExt;
 use futures::channel::mpsc;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tokio::task;
 
 use std::collections::BTreeMap;
-use std::error::Error;
 use std::io;
 use std::marker::PhantomData;
 
@@ -305,74 +305,6 @@ impl Argument<bool> for NamedArg {
 
     fn deserialize(&self, json: serde_json::Value) -> serde_json::Result<bool> {
         serde_json::from_value(json)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Outcome<T = serde_json::Value> {
-    #[serde(flatten)]
-    content: Content<T>,
-    is_error: bool,
-}
-
-impl<T> Outcome<T> {
-    pub async fn serialize(self) -> serde_json::Result<Outcome>
-    where
-        T: Serialize,
-    {
-        Ok(Outcome {
-            content: match self.content {
-                Content::Unstructured(content) => Content::Unstructured(content),
-                Content::Structured(content) => {
-                    Content::Structured(serde_json::to_value(&content)?)
-                }
-            },
-            is_error: self.is_error,
-        })
-    }
-}
-
-pub trait IntoOutcome {
-    type Content;
-
-    fn into_outcome(self) -> Outcome<Self::Content>;
-}
-
-impl<T> IntoOutcome for T
-where
-    T: Into<Content<T>>,
-{
-    type Content = T;
-
-    fn into_outcome(self) -> Outcome<Self::Content> {
-        Outcome {
-            content: self.into(),
-            is_error: false,
-        }
-    }
-}
-
-impl<T, E> IntoOutcome for Result<T, E>
-where
-    T: Into<Content<T>>,
-    E: Error,
-{
-    type Content = T;
-
-    fn into_outcome(self) -> Outcome<T> {
-        match self {
-            Ok(value) => Outcome {
-                content: value.into(),
-                is_error: false,
-            },
-            Err(error) => Outcome {
-                content: Content::Unstructured(vec![content::Unstructured::Text {
-                    text: error.to_string(),
-                }]),
-                is_error: false,
-            },
-        }
     }
 }
 

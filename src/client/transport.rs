@@ -1,4 +1,6 @@
-use crate::{Message, Response};
+use crate::mcp;
+use crate::mcp::client::Message;
+use crate::mcp::server;
 
 use futures::StreamExt;
 use futures::channel::mpsc;
@@ -15,15 +17,15 @@ pub trait Transport {
 pub type Task = futures::future::BoxFuture<'static, io::Result<Receiver>>;
 
 pub struct Receiver {
-    raw: mpsc::Receiver<io::Result<Message>>,
+    raw: mpsc::Receiver<io::Result<server::Message<serde_json::Value>>>,
 }
 
 impl Receiver {
-    pub fn new(raw: mpsc::Receiver<io::Result<Message>>) -> Self {
+    pub fn new(raw: mpsc::Receiver<io::Result<server::Message<serde_json::Value>>>) -> Self {
         Self { raw }
     }
 
-    pub(crate) async fn next<T: DeserializeOwned>(&mut self) -> io::Result<Message<T>> {
+    pub(crate) async fn next<T: DeserializeOwned>(&mut self) -> io::Result<server::Message<T>> {
         let Some(message) = self.raw.next().await.transpose()? else {
             return Err(io::Error::new(
                 io::ErrorKind::ConnectionReset,
@@ -31,21 +33,12 @@ impl Receiver {
             ));
         };
 
-        Ok(match message {
-            Message::Request(message) => Message::Request(message),
-            Message::Notification(notification) => Message::Notification(notification),
-            Message::Response(response) => Message::Response(Response {
-                jsonrpc: crate::JSONRPC.to_owned(),
-                id: response.id,
-                result: serde_json::from_value(response.result)?,
-            }),
-            Message::Error(error) => Message::Error(error),
-        })
+        Ok(message.decode()?)
     }
 
-    pub(crate) async fn response<T: DeserializeOwned>(mut self) -> io::Result<Response<T>> {
+    pub(crate) async fn response<T: DeserializeOwned>(mut self) -> io::Result<mcp::Response<T>> {
         loop {
-            if let Message::Response(response) = self.next().await? {
+            if let server::Message::Response(response) = self.next().await? {
                 return Ok(response);
             }
         }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Content<T = serde_json::Value> {
     #[serde(rename = "content")]
     Unstructured(Vec<Unstructured>),
@@ -34,7 +34,7 @@ impl From<serde_json::Value> for Content {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Unstructured {
     Text {

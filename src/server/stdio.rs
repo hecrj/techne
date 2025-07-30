@@ -1,7 +1,5 @@
-use crate::Message;
-use crate::error;
-use crate::notification;
-use crate::request;
+use crate::mcp::client;
+use crate::mcp::server::Message;
 use crate::server::transport::{Action, Connection, Receipt, Transport};
 
 use futures::channel::mpsc;
@@ -52,25 +50,26 @@ impl Transport for Stdio {
                 return Ok(Action::Quit);
             }
 
-            let message = match Message::deserialize(self.json.as_bytes()) {
+            let message = match client::Message::deserialize(self.json.as_bytes()) {
                 Ok(message) => message,
                 Err(error) => {
                     log::error!("{error}");
 
-                    let _ = self.output.send(Message::Error(error)).await;
+                    let _ = self.output.send(Message::error(None, error)).await;
                     continue;
                 }
             };
 
             let action = match message {
-                Message::Request(request::Message { id, request, .. }) => {
-                    Action::Request(Connection::new(id, self.output.clone()), request)
+                client::Message::Request(request) => Action::Request(
+                    Connection::new(request.id, self.output.clone()),
+                    request.payload,
+                ),
+                client::Message::Notification(notification) => {
+                    Action::Notify(Receipt::null(), notification.payload)
                 }
-                Message::Notification(notification::Message { notification, .. }) => {
-                    Action::Notify(Receipt::null(), notification)
-                }
-                Message::Response(response) => Action::Respond(Receipt::null(), response),
-                Message::Error(error::Message { error, .. }) => {
+                client::Message::Response(response) => Action::Respond(Receipt::null(), response),
+                client::Message::Error { error, .. } => {
                     log::error!("{error}");
                     continue;
                 }

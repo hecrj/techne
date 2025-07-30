@@ -1,9 +1,10 @@
-use crate::{Error, Message, Notification, Request, Response};
+use crate::mcp::client;
+use crate::mcp::server::{Message, Notification, Request, Response};
+use crate::mcp::{self, Error, Id};
 
 use futures::SinkExt;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
-use serde::Serialize;
 
 use std::io;
 
@@ -12,53 +13,44 @@ pub trait Transport {
 }
 
 pub enum Action {
-    Request(Connection, Request),
-    Notify(Receipt, Notification),
-    Respond(Receipt, Response),
+    Request(Connection, client::Request),
+    Notify(Receipt, client::Notification),
+    Respond(Receipt, mcp::Response),
     Quit,
 }
 
 #[derive(Debug, Clone)]
 pub struct Connection {
-    id: u64,
+    id: Id,
     sender: mpsc::Sender<Message>,
-    total_requests: u64,
+    total_requests: Id,
 }
 
 impl Connection {
-    pub fn new(id: u64, sender: mpsc::Sender<Message>) -> Self {
+    pub fn new(id: Id, sender: mpsc::Sender<Message>) -> Self {
         Self {
             id,
             sender,
-            total_requests: 0,
+            total_requests: Id::default(),
         }
     }
 
     pub async fn request(&mut self, request: Request) -> io::Result<()> {
-        let id = self.total_requests;
-        self.total_requests += 1;
+        let id = self.total_requests.increment();
 
-        self.send(Message::Request(request.stamp(id))).await
+        self.send(Message::request(id, request)).await
     }
 
     pub async fn notify(&mut self, notification: Notification) -> io::Result<()> {
-        self.send(Message::Notification(notification.stamp())).await
+        self.send(Message::notification(notification)).await
     }
 
     pub async fn error(mut self, error: Error) -> io::Result<()> {
-        self.send(Message::Error(error.stamp(Some(self.id)))).await
+        self.send(Message::error(Some(self.id), error)).await
     }
 
-    pub async fn finish<T: Serialize>(mut self, result: T) -> io::Result<()> {
-        self.send(Message::Response(
-            Response {
-                jsonrpc: crate::JSONRPC.to_owned(),
-                id: self.id,
-                result,
-            }
-            .serialize()?,
-        ))
-        .await
+    pub async fn finish(mut self, result: impl Into<Response>) -> io::Result<()> {
+        self.send(Message::response(self.id, result.into())).await
     }
 
     pub async fn send(&mut self, message: Message) -> io::Result<()> {

@@ -1,5 +1,6 @@
-use crate::Message;
-use crate::error;
+use crate::mcp;
+use crate::mcp::client;
+use crate::mcp::server::Message;
 use crate::server::transport::{Action, Connection, Receipt, Transport};
 
 use futures::channel::mpsc;
@@ -82,32 +83,32 @@ async fn serve(
             }
 
             let bytes = request.into_body().collect().await?.to_bytes();
-            let message = match Message::deserialize(&bytes) {
+            let message = match client::Message::deserialize(&bytes) {
                 Ok(message) => message,
                 Err(error) => {
                     log::error!("{error}");
 
-                    return Ok(protocol_error(error));
+                    return Ok(protocol_error(None, error));
                 }
             };
 
             let (sender, receiver) = mpsc::channel(10);
             let (accept_sender, accept_receiver) = oneshot::channel();
-            let is_request = matches!(message, Message::Request(_));
+            let is_request = matches!(message, client::Message::Request(_));
 
             let action = match message {
-                Message::Request(message) => {
+                client::Message::Request(request) => {
                     let _ = accept_sender.send(true);
-                    Action::Request(Connection::new(message.id, sender), message.request)
+                    Action::Request(Connection::new(request.id, sender), request.payload)
                 }
-                Message::Notification(message) => {
-                    Action::Notify(Receipt::new(accept_sender), message.notification)
+                client::Message::Notification(notification) => {
+                    Action::Notify(Receipt::new(accept_sender), notification.payload)
                 }
-                Message::Response(response) => {
+                client::Message::Response(response) => {
                     Action::Respond(Receipt::new(accept_sender), response)
                 }
-                Message::Error(error) => {
-                    return Ok(protocol_error(error));
+                client::Message::Error { id, error, .. } => {
+                    return Ok(protocol_error(id, error));
                 }
             };
 
@@ -176,12 +177,12 @@ fn not_found() -> Response {
     status(StatusCode::NOT_FOUND)
 }
 
-fn protocol_error(error: error::Message) -> Response {
+fn protocol_error(id: Option<mcp::Id>, error: mcp::Error) -> Response {
     use futures::stream;
 
     stream(
         StatusCode::BAD_REQUEST,
-        stream::once(async move { Message::Error(error) }),
+        stream::once(async move { Message::error(id, error) }),
     )
 }
 

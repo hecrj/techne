@@ -1,7 +1,4 @@
-pub mod initialize;
-pub mod tool;
-
-pub use initialize::Initialize;
+use crate::mcp::client::{self, Client};
 
 use serde::{Deserialize, Serialize};
 
@@ -15,25 +12,15 @@ pub enum Request {
     #[serde(rename = "tools/list")]
     ToolsList,
     #[serde(rename = "tools/call")]
-    ToolsCall { params: tool::Call },
+    ToolsCall { params: ToolCall },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
-    jsonrpc: String,
-    pub id: u64,
-    #[serde(flatten)]
-    pub request: Request,
-}
-
-impl Request {
-    pub fn stamp(self, id: u64) -> Message {
-        Message {
-            jsonrpc: crate::JSONRPC.to_owned(),
-            id,
-            request: self,
-        }
-    }
+#[serde(rename_all = "camelCase")]
+pub struct Initialize {
+    pub protocol_version: String,
+    pub capabilities: client::Capabilities,
+    pub client_info: Client,
 }
 
 impl From<Initialize> for Request {
@@ -42,8 +29,14 @@ impl From<Initialize> for Request {
     }
 }
 
-impl From<tool::Call> for Request {
-    fn from(call: tool::Call) -> Self {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub name: String,
+    pub arguments: serde_json::Value,
+}
+
+impl From<ToolCall> for Request {
+    fn from(call: ToolCall) -> Self {
         Self::ToolsCall { params: call }
     }
 }

@@ -1,5 +1,6 @@
-use crate::Message;
 use crate::client::transport::{Receiver, Task, Transport};
+use crate::mcp::client::Message;
+use crate::mcp::server;
 
 use futures::channel::mpsc;
 use futures::future;
@@ -15,7 +16,7 @@ pub struct Stdio {
     runner: mpsc::Sender<Action>,
 }
 
-type Sender = mpsc::Sender<io::Result<Message>>;
+type Sender = mpsc::Sender<io::Result<server::Message<serde_json::Value>>>;
 
 enum Action {
     Listen(Sender),
@@ -124,8 +125,10 @@ async fn run(
                         let message = deserialize(&line).await;
 
                         match message {
-                            Ok(Message::Response(response)) if response.id == request_id => {
-                                let _ = sender.send(Ok(Message::Response(response))).await;
+                            Ok(server::Message::Response(response))
+                                if response.id == request_id =>
+                            {
+                                let _ = sender.send(Ok(server::Message::Response(response))).await;
                                 break;
                             }
                             _ => {
@@ -134,7 +137,7 @@ async fn run(
                         }
                     }
                 }
-                Message::Notification(_) | Message::Response(_) | Message::Error(_) => {
+                Message::Notification(_) | Message::Response(_) | Message::Error { .. } => {
                     write(&mut input, &message).await?;
                 }
             },
@@ -147,7 +150,7 @@ async fn run(
     Ok(())
 }
 
-async fn deserialize(json: &str) -> io::Result<Message> {
+async fn deserialize(json: &str) -> io::Result<server::Message<serde_json::Value>> {
     // TODO: Deserialize in blocking task (?)
     Ok(serde_json::from_str(json)?)
 }
