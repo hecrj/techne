@@ -87,7 +87,7 @@ impl Server {
 
         connection
             .finish(response::Initialize {
-                protocol_version: crate::PROTOCOL_VERSION.to_owned(),
+                protocol_version: mcp::VERSION.to_owned(),
                 capabilities: Capabilities {
                     tools: (!self.tools.is_empty()).then_some(capabilities::Tools {
                         list_changed: false, // TODO?

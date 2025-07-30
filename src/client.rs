@@ -36,7 +36,7 @@ impl Client {
 
         let initialize = connection
             .request(request::Initialize {
-                protocol_version: crate::PROTOCOL_VERSION.to_owned(),
+                protocol_version: mcp::VERSION.to_owned(),
                 capabilities: Capabilities {},
                 client_info: mcp::Client {
                     name: name.as_ref().to_owned(),
@@ -48,12 +48,12 @@ impl Client {
             .response::<server::response::Initialize>()
             .await?;
 
-        if initialize.result.protocol_version != crate::PROTOCOL_VERSION {
+        if initialize.result.protocol_version != mcp::VERSION {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 format!(
                     "protocol mismatch (supported: {supported}, given: {given})",
-                    supported = crate::PROTOCOL_VERSION,
+                    supported = mcp::VERSION,
                     given = initialize.result.protocol_version,
                 ),
             ));

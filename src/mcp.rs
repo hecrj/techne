@@ -12,7 +12,8 @@ pub use serde_json::Value;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-const VERSION: &str = "2.0";
+pub const VERSION: &str = "2025-06-18";
+pub const JSONRPC: &str = "2.0";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -43,7 +44,7 @@ impl<R, N, T> Message<R, N, T> {
 
     pub fn error(id: Option<Id>, error: Error) -> Self {
         Self::Error {
-            jsonrpc: VERSION.to_owned(),
+            jsonrpc: JSONRPC.to_owned(),
             id,
             error,
         }
@@ -95,7 +96,7 @@ pub struct Request<T> {
 impl<T> Request<T> {
     pub(crate) fn new(id: Id, payload: T) -> Self {
         Self {
-            jsonrpc: VERSION.to_owned(),
+            jsonrpc: JSONRPC.to_owned(),
             id,
             payload,
         }
@@ -112,7 +113,7 @@ pub struct Response<T = serde_json::Value> {
 impl<T> Response<T> {
     pub(crate) fn new(id: Id, result: T) -> Self {
         Self {
-            jsonrpc: VERSION.to_owned(),
+            jsonrpc: JSONRPC.to_owned(),
             id,
             result,
         }
@@ -140,7 +141,7 @@ pub struct Notification<T> {
 impl<T> Notification<T> {
     pub(crate) fn new(payload: T) -> Self {
         Self {
-            jsonrpc: VERSION.to_owned(),
+            jsonrpc: JSONRPC.to_owned(),
             payload,
         }
     }
