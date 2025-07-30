@@ -308,7 +308,7 @@ impl Argument<bool> for NamedArg {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Outcome<T = serde_json::Value> {
     #[serde(flatten)]

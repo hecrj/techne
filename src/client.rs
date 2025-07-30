@@ -7,6 +7,7 @@ pub use transport::Transport;
 
 use crate::request;
 use crate::response;
+use crate::tool;
 use crate::{Message, Notification, Request, Response};
 
 use std::fmt;
@@ -71,7 +72,7 @@ impl Client {
     }
 
     pub async fn list_tools(&mut self) -> io::Result<Vec<response::Tool>> {
-        let mut list = self.connection.request(Request::ToolsList {}).await?;
+        let mut list = self.connection.request(Request::ToolsList).await?;
 
         let Response {
             result: response::tool::List { tools },
@@ -79,6 +80,25 @@ impl Client {
         } = list.response().await?;
 
         Ok(tools)
+    }
+
+    pub async fn call_tool(
+        &mut self,
+        name: impl AsRef<str>,
+        arguments: serde_json::Value,
+    ) -> io::Result<tool::Outcome> {
+        let mut call = self
+            .connection
+            .request(Request::ToolsCall {
+                params: request::tool::Call {
+                    name: name.as_ref().to_owned(),
+                    arguments,
+                },
+            })
+            .await?;
+
+        let response = call.response().await?;
+        Ok(response.result)
     }
 }
 

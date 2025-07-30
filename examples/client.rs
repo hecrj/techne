@@ -1,6 +1,7 @@
 use techne::Client;
 use techne::client::Stdio;
 
+use serde_json::json;
 use std::io;
 
 #[tokio::main]
@@ -18,8 +19,12 @@ pub async fn main() -> io::Result<()> {
 
     let tools = client.list_tools().await?;
 
-    dbg!(client);
+    let hello = client
+        .call_tool("say_hello", json!({ "name": "World" }))
+        .await?;
+
     dbg!(tools);
+    dbg!(hello);
 
     Ok(())
 }
