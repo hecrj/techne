@@ -19,6 +19,7 @@ An MCP implementation for Rust focused on simplicity and type-safety.
 
 - No macros!
 - Coherent schemas enforced at the type level
+- Stdio and Streamable HTTP transports
 - Custom transports
 - Latest protocol version (`2025-06-18`)
 
@@ -27,7 +28,7 @@ Create a `Server`, choose your desired transport, list your tools, and run:
 
 ```rust
 use techne::Server;
-use techne::server::Http;
+use techne::server::Stdio;
 use techne::tool::{tool, string};
 
 use std::io;
@@ -35,7 +36,7 @@ use std::io;
 #[tokio::main]
 pub async fn main() -> io::Result<()> {
     let server = Server::new("techne-server-example", env!("CARGO_PKG_VERSION"));
-    let transport = Http::bind("127.0.0.1:8080").await?;
+    let transport = Stdio::current();
 
     let tools = [
         tool(say_hello, string("name", "The name to say hello to"))
@@ -48,5 +49,36 @@ pub async fn main() -> io::Result<()> {
 
 async fn say_hello(name: String) -> String {
     format!("Hello, {name}!")
+}
+```
+
+## Client
+Create a `Client` with your desired transport and query the server:
+
+```rust
+use techne::Client;
+use techne::client::Stdio;
+
+use std::io;
+
+#[tokio::main]
+pub async fn main() -> io::Result<()> {
+    tracing_subscriber::fmt::init();
+
+    let transport = Stdio::run("cargo", ["run", "--example", "server"])?;
+
+    let mut client = Client::new(
+        "techne-client-example",
+        env!("CARGO_PKG_VERSION"),
+        transport,
+    )
+    .await?;
+
+    let tools = client.list_tools().await?;
+
+    dbg!(client);
+    dbg!(tools);
+
+    Ok(())
 }
 ```

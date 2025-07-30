@@ -16,8 +16,10 @@ pub async fn main() -> io::Result<()> {
     )
     .await?;
 
-    dbg!(&client);
-    dbg!(client.list_tools().await?);
+    let tools = client.list_tools().await?;
+
+    dbg!(client);
+    dbg!(tools);
 
     Ok(())
 }

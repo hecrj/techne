@@ -87,14 +87,15 @@ async fn run(
     loop {
         let next_event = {
             let next_line = Box::pin(output.next_line());
-            let next_action = receiver.select_next_some().fuse();
+            let next_action = receiver.next().fuse();
 
             future::select(next_line, next_action)
         };
 
         let event = match next_event.await {
             Either::Left((line, _)) => Either::Left(line),
-            Either::Right((action, _)) => Either::Right(action),
+            Either::Right((Some(action), _)) => Either::Right(action),
+            _ => return Ok(()),
         };
 
         match event {
