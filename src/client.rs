@@ -10,6 +10,8 @@ use crate::response;
 use crate::tool;
 use crate::{Message, Notification, Request, Response};
 
+use sipper::{Straw, sipper};
+
 use std::fmt;
 use std::io;
 use std::sync::Arc;
@@ -72,7 +74,7 @@ impl Client {
     }
 
     pub async fn list_tools(&mut self) -> io::Result<Vec<response::Tool>> {
-        let mut list = self.connection.request(Request::ToolsList).await?;
+        let list = self.connection.request(Request::ToolsList).await?;
 
         let Response {
             result: response::tool::List { tools },
@@ -82,24 +84,46 @@ impl Client {
         Ok(tools)
     }
 
-    pub async fn call_tool(
+    pub fn call_tool(
         &mut self,
         name: impl AsRef<str>,
         arguments: serde_json::Value,
-    ) -> io::Result<tool::Outcome> {
-        let mut call = self
-            .connection
-            .request(Request::ToolsCall {
-                params: request::tool::Call {
-                    name: name.as_ref().to_owned(),
-                    arguments,
-                },
-            })
-            .await?;
+    ) -> impl Straw<tool::Outcome, Event, io::Error> {
+        sipper(async move |mut sender| {
+            let mut call = self
+                .connection
+                .request(Request::ToolsCall {
+                    params: request::tool::Call {
+                        name: name.as_ref().to_owned(),
+                        arguments,
+                    },
+                })
+                .await?;
 
-        let response = call.response().await?;
-        Ok(response.result)
+            loop {
+                match call.next().await? {
+                    Message::Request(request) => {
+                        sender.send(Event::Request(request)).await;
+                    }
+                    Message::Notification(message) => {
+                        sender.send(Event::Notification(message.notification)).await;
+                    }
+                    Message::Response(response) => {
+                        return Ok(response.result);
+                    }
+                    Message::Error(error) => {
+                        log::warn!("{error}");
+                    }
+                }
+            }
+        })
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum Event {
+    Notification(Notification),
+    Request(request::Message),
 }
 
 struct Connection {

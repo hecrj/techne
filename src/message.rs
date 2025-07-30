@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum Message {
+pub enum Message<T = serde_json::Value> {
     Request(request::Message),
     Notification(notification::Message),
-    Response(Response),
+    Response(Response<T>),
     Error(error::Message),
 }
 

@@ -23,26 +23,31 @@ impl Receiver {
         Self { raw }
     }
 
-    pub(crate) async fn response<T: DeserializeOwned>(&mut self) -> io::Result<Response<T>> {
-        let mut responses = Box::pin(self.raw.by_ref().filter_map(async |message| {
-            if let Message::Response(response) = message.ok()? {
-                Some(response)
-            } else {
-                None
-            }
-        }));
-
-        let Some(response) = responses.next().await else {
+    pub(crate) async fn next<T: DeserializeOwned>(&mut self) -> io::Result<Message<T>> {
+        let Some(message) = self.raw.next().await.transpose()? else {
             return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "expected response",
+                io::ErrorKind::ConnectionReset,
+                "stream was closed by peer",
             ));
         };
 
-        Ok(Response {
-            jsonrpc: crate::JSONRPC.to_owned(),
-            id: response.id,
-            result: serde_json::from_value(response.result)?,
+        Ok(match message {
+            Message::Request(message) => Message::Request(message),
+            Message::Notification(notification) => Message::Notification(notification),
+            Message::Response(response) => Message::Response(Response {
+                jsonrpc: crate::JSONRPC.to_owned(),
+                id: response.id,
+                result: serde_json::from_value(response.result)?,
+            }),
+            Message::Error(error) => Message::Error(error),
         })
+    }
+
+    pub(crate) async fn response<T: DeserializeOwned>(mut self) -> io::Result<Response<T>> {
+        loop {
+            if let Message::Response(response) = self.next().await? {
+                return Ok(response);
+            }
+        }
     }
 }

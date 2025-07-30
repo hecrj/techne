@@ -11,6 +11,7 @@ server-http = ["dep:hyper", "dep:hyper-util", "hyper-util/server-auto", "dep:htt
 [dependencies]
 log = "0.4"
 serde_json = "1"
+sipper = "0.1"
 futures = "0.3"
 
 hyper.version = "1.6"
