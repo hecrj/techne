@@ -28,8 +28,6 @@ impl Http {
         let (mut sender, receiver) = mpsc::channel(10);
 
         drop(task::spawn(async move {
-            let service = service_fn(|request| serve(request, sender.clone()));
-
             loop {
                 let stream = match listener.accept().await {
                     Ok((stream, _address)) => rt::TokioIo::new(stream),
@@ -41,12 +39,18 @@ impl Http {
                     }
                 };
 
-                if let Err(error) = auto::Builder::new(rt::TokioExecutor::new())
-                    .serve_connection_with_upgrades(stream, service)
-                    .await
-                {
-                    log::error!("{error}");
-                }
+                let sender = sender.clone();
+
+                drop(task::spawn(async move {
+                    let service = service_fn(move |request| serve(request, sender.clone()));
+
+                    if let Err(error) = auto::Builder::new(rt::TokioExecutor::new())
+                        .serve_connection_with_upgrades(stream, service)
+                        .await
+                    {
+                        log::error!("{error}");
+                    }
+                }));
             }
         }));
 
@@ -130,7 +134,7 @@ fn stream(stream: impl Stream<Item = Bytes> + Send + Sync + 'static) -> Response
         stream
             .flat_map(|bytes| {
                 stream::iter([
-                    Bytes::from_static(b"data: "),
+                    Bytes::from_static(b"data:"),
                     bytes,
                     Bytes::from_static(b"\n\n"),
                 ])
