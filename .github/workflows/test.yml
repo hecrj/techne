@@ -17,3 +17,6 @@ jobs:
     - name: Run tests
       run: |
         cargo test --verbose --workspace
+    - name: Run client example
+      run: |
+        cargo run --example client
