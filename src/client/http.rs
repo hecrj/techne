@@ -102,12 +102,19 @@ impl Transport for Http {
 }
 
 async fn read_stream(mut sender: mpsc::Sender<Bytes>, mut response: Response) -> Result<(), Error> {
+    static PREFIX: usize = b"data:".len();
+
     let mut last_event = Vec::new();
 
     while let Some(chunk) = response.chunk().await? {
         for chunk in chunk.split(|byte| *byte == 0xA) {
             if chunk.is_empty() && !last_event.is_empty() {
-                let _ = sender.send(Bytes::copy_from_slice(&last_event)).await;
+                if last_event.len() > PREFIX {
+                    let _ = sender
+                        .send(Bytes::copy_from_slice(&last_event[PREFIX..]))
+                        .await;
+                }
+
                 last_event.clear();
             }
 
