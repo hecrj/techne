@@ -510,6 +510,7 @@ dependencies = [
 name = "techne"
 version = "0.1.0-dev"
 dependencies = [
+ "bytes",
  "futures",
  "http",
  "http-body-util",

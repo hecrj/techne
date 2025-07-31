@@ -14,7 +14,7 @@ use crate::mcp;
 use crate::mcp::client;
 use crate::mcp::server;
 use crate::mcp::server::response::{self, Response};
-use crate::server::transport::{Action, Connection};
+use crate::server::transport::{Action, Channel, Connection, Receipt};
 
 use tokio::task;
 
@@ -55,23 +55,51 @@ impl Server {
             let action = transport.accept().await?;
 
             match action {
-                Action::Request(connection, request) => {
+                Action::Subscribe(channel) => {
+                    let _ = channel.send(transport::Result::Reject);
+                }
+                Action::Handle(bytes, channel) => {
                     let server = server.clone();
 
                     drop(task::spawn(async move {
-                        if let Err(error) = server.serve(connection, request).await {
+                        if let Err(error) = server.handle(bytes, channel).await {
                             log::error!("{error}");
                         }
                     }));
                 }
-                Action::Notify(receipt, _notification) => receipt.reject(), // TODO
-                Action::Respond(receipt, _response) => receipt.reject(),    // TODO
                 Action::Quit => return Ok(()),
             }
         }
     }
 
-    pub async fn serve(&self, connection: Connection, request: client::Request) -> io::Result<()> {
+    async fn handle(&self, bytes: mcp::Bytes, channel: Channel) -> io::Result<()> {
+        match client::Message::<mcp::Value>::deserialize(&bytes) {
+            Ok(message) => match message {
+                client::Message::Request(request) => {
+                    self.serve(Connection::new(request.id, channel), request.payload)
+                        .await
+                }
+                client::Message::Notification(notification) => {
+                    self.deliver_notification(Receipt::new(channel), notification.payload)
+                        .await
+                }
+                client::Message::Response(response) => {
+                    self.deliver_response(Receipt::new(channel), response).await
+                }
+                client::Message::Error(error) => {
+                    self.deliver_error(Receipt::new(channel), error).await
+                }
+            },
+            Err(error) => {
+                let bytes = mcp::Error::invalid_json(error.to_string()).serialize()?;
+                let _ = channel.send(transport::Result::Send(bytes));
+
+                Ok(())
+            }
+        }
+    }
+
+    async fn serve(&self, connection: Connection, request: client::Request) -> io::Result<()> {
         log::debug!("Serving {request:?}");
 
         match request {
@@ -102,7 +130,7 @@ impl Server {
     }
 
     async fn ping(&self, connection: Connection) -> io::Result<()> {
-        connection.finish(Response::Ping).await
+        connection.finish(Response::Ping {}).await
     }
 
     async fn list_tools(&self, connection: Connection) -> io::Result<()> {
@@ -132,7 +160,7 @@ impl Server {
 
         let Some(tool) = self.tools.get(&call.name) else {
             return connection
-                .error(mcp::Error::invalid_params(format!(
+                .error(mcp::ErrorKind::invalid_params(format!(
                     "Unknown tool: {}",
                     &call.name
                 )))
@@ -150,6 +178,31 @@ impl Server {
                 crate::tool::Action::Finish(outcome) => return connection.finish(outcome?).await,
             }
         }
+
+        Ok(())
+    }
+
+    async fn deliver_notification(
+        &self,
+        receipt: Receipt,
+        _notification: client::Notification,
+    ) -> io::Result<()> {
+        // TODO
+        receipt.reject();
+
+        Ok(())
+    }
+
+    async fn deliver_response(&self, receipt: Receipt, _response: mcp::Response) -> io::Result<()> {
+        // TODO
+        receipt.reject();
+
+        Ok(())
+    }
+
+    async fn deliver_error(&self, receipt: Receipt, _error: mcp::Error) -> io::Result<()> {
+        // TODO
+        receipt.reject();
 
         Ok(())
     }

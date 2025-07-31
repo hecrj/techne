@@ -114,7 +114,7 @@ impl Client {
                     server::Message::Response(response) => {
                         return Ok(response.result);
                     }
-                    server::Message::Error { error, .. } => {
+                    server::Message::Error(error) => {
                         log::warn!("{error}");
                     }
                 }

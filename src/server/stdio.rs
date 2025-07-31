@@ -1,17 +1,15 @@
-use crate::mcp::client;
-use crate::mcp::server::Message;
-use crate::server::transport::{Action, Connection, Receipt, Transport};
+use crate::server::transport::{Action, Result, Transport};
 
+use bytes::Bytes;
 use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::{SinkExt, StreamExt};
-use serde::Serialize;
 use tokio::io::{self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::task;
 
 pub struct Stdio {
     input: BufReader<Box<dyn AsyncRead + Send + Unpin>>,
-    output: mpsc::Sender<Message>,
-    json: String,
+    output: mpsc::Sender<Result>,
 }
 
 impl Stdio {
@@ -26,8 +24,16 @@ impl Stdio {
         let (sender, mut receiver) = mpsc::channel(10);
 
         drop(task::spawn(async move {
-            while let Some(message) = receiver.next().await {
-                write(message, &mut output).await?;
+            while let Some(action) = receiver.next().await {
+                match action {
+                    Result::Send(bytes) => write(&bytes, &mut output).await?,
+                    Result::Stream(mut stream) => {
+                        while let Some(bytes) = stream.next().await {
+                            write(&bytes, &mut output).await?
+                        }
+                    }
+                    Result::Accept | Result::Reject | Result::Unsupported => {}
+                }
             }
 
             Ok::<(), io::Error>(())
@@ -36,57 +42,33 @@ impl Stdio {
         Self {
             input: BufReader::new(Box::new(input)),
             output: sender,
-            json: String::new(),
         }
     }
 }
 
 impl Transport for Stdio {
     async fn accept(&mut self) -> io::Result<Action> {
-        loop {
-            self.json.clear();
+        let mut line = Vec::new();
 
-            if self.input.read_line(&mut self.json).await? == 0 {
-                return Ok(Action::Quit);
-            }
-
-            let message = match client::Message::deserialize(self.json.as_bytes()) {
-                Ok(message) => message,
-                Err(error) => {
-                    log::error!("{error}");
-
-                    let _ = self.output.send(Message::error(None, error)).await;
-                    continue;
-                }
-            };
-
-            let action = match message {
-                client::Message::Request(request) => Action::Request(
-                    Connection::new(request.id, self.output.clone()),
-                    request.payload,
-                ),
-                client::Message::Notification(notification) => {
-                    Action::Notify(Receipt::null(), notification.payload)
-                }
-                client::Message::Response(response) => Action::Respond(Receipt::null(), response),
-                client::Message::Error { error, .. } => {
-                    log::error!("{error}");
-                    continue;
-                }
-            };
-
-            return Ok(action);
+        if self.input.read_until(0xA, &mut line).await? == 0 {
+            return Ok(Action::Quit);
         }
+
+        let mut output = self.output.clone();
+        let (sender, receiver) = oneshot::channel();
+
+        task::spawn(async move {
+            if let Ok(result) = receiver.await {
+                let _ = output.send(result).await;
+            }
+        });
+
+        Ok(Action::Handle(Bytes::from_owner(line), sender))
     }
 }
 
-async fn write(
-    data: impl Serialize + Send + Sync,
-    writer: &mut (dyn AsyncWrite + Send + Unpin),
-) -> io::Result<()> {
-    let json = serde_json::to_vec(&data)?;
-
-    writer.write_all(&json).await?;
+async fn write(data: &[u8], writer: &mut (dyn AsyncWrite + Send + Unpin)) -> io::Result<()> {
+    writer.write_all(data).await?;
     writer.write_u8(0xA).await?;
     writer.flush().await
 }

@@ -7,6 +7,7 @@ pub use client::Client;
 pub use schema::Schema;
 pub use server::Server;
 
+pub use bytes::Bytes;
 pub use serde_json::Value;
 
 use serde::de::DeserializeOwned;
@@ -21,12 +22,7 @@ pub enum Message<R, N, T = Value> {
     Request(Request<R>),
     Notification(Notification<N>),
     Response(Response<T>),
-    Error {
-        jsonrpc: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        id: Option<Id>,
-        error: Error,
-    },
+    Error(Error),
 }
 
 impl<R, N, T> Message<R, N, T> {
@@ -42,12 +38,8 @@ impl<R, N, T> Message<R, N, T> {
         Self::Response(Response::new(id, result))
     }
 
-    pub fn error(id: Option<Id>, error: Error) -> Self {
-        Self::Error {
-            jsonrpc: JSONRPC.to_owned(),
-            id,
-            error,
-        }
+    pub fn error(id: Option<Id>, payload: ErrorKind) -> Self {
+        Self::Error(Error::new(id, payload))
     }
 
     pub fn deserialize(json: &[u8]) -> Result<Self, Error>
@@ -69,6 +61,15 @@ impl<R, N, T> Message<R, N, T> {
             Err(error) => Err(Error::invalid_json(error.to_string())),
         }
     }
+
+    pub fn serialize(&self) -> serde_json::Result<Bytes>
+    where
+        R: Serialize,
+        N: Serialize,
+        T: Serialize,
+    {
+        serde_json::to_vec(&self).map(Bytes::from_owner)
+    }
 }
 
 impl<R, N> Message<R, N> {
@@ -80,7 +81,7 @@ impl<R, N> Message<R, N> {
                 response.id,
                 serde_json::from_value(response.result)?,
             )),
-            Self::Error { jsonrpc, id, error } => Message::Error { jsonrpc, id, error },
+            Self::Error(error) => Message::Error(error),
         })
     }
 }
@@ -118,17 +119,6 @@ impl<T> Response<T> {
             result,
         }
     }
-
-    pub fn serialize(self) -> serde_json::Result<Response>
-    where
-        T: Serialize,
-    {
-        Ok(Response {
-            jsonrpc: self.jsonrpc,
-            id: self.id,
-            result: serde_json::to_value(self.result)?,
-        })
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,21 +139,47 @@ impl<T> Notification<T> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Error {
+    jsonrpc: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    id: Option<Id>,
+    #[serde(rename = "error")]
+    payload: ErrorKind,
+}
+
+impl Error {
+    pub fn new(id: Option<Id>, payload: ErrorKind) -> Self {
+        Self {
+            jsonrpc: JSONRPC.to_owned(),
+            id,
+            payload,
+        }
+    }
+
+    pub fn method_not_found(method: String) -> Self {
+        Self::new(
+            None,
+            ErrorKind::new(-32601, format!("Unknown method: {method}")),
+        )
+    }
+
+    pub fn invalid_json(message: String) -> Self {
+        Self::new(None, ErrorKind::new(-32700, message))
+    }
+
+    pub fn serialize(&self) -> serde_json::Result<Bytes> {
+        serde_json::to_vec(self).map(Bytes::from_owner)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorKind {
     code: i64,
     message: String,
 }
 
-impl Error {
+impl ErrorKind {
     fn new(code: i64, message: String) -> Self {
         Self { code, message }
-    }
-
-    pub fn invalid_json(message: String) -> Self {
-        Self::new(-32700, message)
-    }
-
-    pub fn method_not_found(method: String) -> Self {
-        Self::new(-32601, format!("Unknown method: {method}"))
     }
 
     pub fn invalid_params(message: String) -> Self {
@@ -172,6 +188,12 @@ impl Error {
 }
 
 impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.payload.fmt(f)
+    }
+}
+
+impl std::fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

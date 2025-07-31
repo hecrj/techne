@@ -9,7 +9,7 @@ pub enum Response {
     Initialize(Initialize),
     ToolsList(ToolsList),
     ToolsCall(tool::Outcome),
-    Ping,
+    Ping {},
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
