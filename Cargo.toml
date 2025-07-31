@@ -5,8 +5,9 @@ edition = "2024"
 description = "A simple MCP implementation for Rust"
 
 [features]
-default = ["server-http"]
-server-http = ["dep:hyper", "dep:hyper-util", "hyper-util/server-auto", "dep:http", "dep:http-body-util", "tokio/net"]
+default = ["client-http", "server-http"]
+client-http = ["dep:reqwest"]
+server-http = ["dep:hyper", "dep:hyper-util", "dep:http", "dep:http-body-util", "tokio/net"]
 
 [dependencies]
 bytes = "1.10"
@@ -19,7 +20,7 @@ hyper.version = "1.6"
 hyper.optional = true
 
 hyper-util.version = "0.1"
-hyper-util.features = ["tokio"]
+hyper-util.features = ["tokio", "server-auto"]
 hyper-util.optional = true
 
 http.version = "1.3"
@@ -27,6 +28,9 @@ http.optional = true
 
 http-body-util.version = "0.1"
 http-body-util.optional = true
+
+reqwest.version = "0.12"
+reqwest.optional = true
 
 serde.version = "1"
 serde.features = ["derive"]

@@ -1,8 +1,12 @@
 pub mod transport;
 
 mod connection;
+#[cfg(feature = "client-http")]
+mod http;
 mod stdio;
 
+#[cfg(feature = "client-http")]
+pub use http::Http;
 pub use stdio::Stdio;
 pub use transport::Transport;
 
@@ -62,7 +66,7 @@ impl Client {
             ));
         }
 
-        session.notify(Notification::Initialized).await?;
+        let _ = session.notify(Notification::Initialized).await;
 
         Ok(Self {
             session,
