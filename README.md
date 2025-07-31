@@ -17,11 +17,14 @@ An MCP implementation for Rust focused on simplicity and type-safety.
 
 ## Features
 
+- Completely handmade!
 - No macros!
 - Coherent schemas enforced at the type level
 - Stdio and Streamable HTTP transports
 - Custom transports
 - Latest protocol version (`2025-06-18`)
+
+**Very experimental! Only the `tools` capability is currently supported.**
 
 ## Server
 Create a `Server`, choose your desired transport, list your tools, and run:
