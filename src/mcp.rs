@@ -8,6 +8,7 @@ pub use schema::Schema;
 pub use server::Server;
 
 pub use bytes::Bytes;
+pub use serde::de::IgnoredAny as Ignored;
 pub use serde_json::Value;
 
 use serde::de::DeserializeOwned;
@@ -61,15 +62,6 @@ impl<R, N, T> Message<R, N, T> {
             Err(error) => Err(Error::invalid_json(error.to_string())),
         }
     }
-
-    pub fn serialize(&self) -> serde_json::Result<Bytes>
-    where
-        R: Serialize,
-        N: Serialize,
-        T: Serialize,
-    {
-        serde_json::to_vec(&self).map(Bytes::from_owner)
-    }
 }
 
 impl<R, N> Message<R, N> {
@@ -102,6 +94,13 @@ impl<T> Request<T> {
             payload,
         }
     }
+
+    pub fn serialize(&self) -> serde_json::Result<Bytes>
+    where
+        T: Serialize,
+    {
+        serde_json::to_vec(self).map(Bytes::from_owner)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +118,13 @@ impl<T> Response<T> {
             result,
         }
     }
+
+    pub fn serialize(&self) -> serde_json::Result<Bytes>
+    where
+        T: Serialize,
+    {
+        serde_json::to_vec(self).map(Bytes::from_owner)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,6 +140,13 @@ impl<T> Notification<T> {
             jsonrpc: JSONRPC.to_owned(),
             payload,
         }
+    }
+
+    pub fn serialize(&self) -> serde_json::Result<Bytes>
+    where
+        T: Serialize,
+    {
+        serde_json::to_vec(self).map(Bytes::from_owner)
     }
 }
 

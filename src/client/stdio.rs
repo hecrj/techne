@@ -1,9 +1,10 @@
-use crate::client::transport::{Receiver, Task, Transport};
+use crate::client::transport::{Channel, Transport};
 use crate::mcp::client::Message;
 use crate::mcp::server;
+use crate::mcp::{self, Bytes};
 
 use futures::channel::mpsc;
-use futures::future;
+use futures::future::{self, BoxFuture};
 use futures::{FutureExt, SinkExt, StreamExt};
 use tokio::io::{self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::process;
@@ -14,13 +15,6 @@ use std::ffi::OsStr;
 pub struct Stdio {
     _process: process::Child,
     runner: mpsc::Sender<Action>,
-}
-
-type Sender = mpsc::Sender<io::Result<server::Message<serde_json::Value>>>;
-
-enum Action {
-    Listen(Sender),
-    Send(Message, Sender),
 }
 
 impl Stdio {
@@ -50,29 +44,36 @@ impl Stdio {
 }
 
 impl Transport for Stdio {
-    fn listen(&self) -> Task {
+    fn listen(&self) -> BoxFuture<'static, io::Result<Channel>> {
         let mut runner = self.runner.clone();
 
         async move {
             let (sender, receiver) = mpsc::channel(1);
             let _ = runner.send(Action::Listen(sender)).await;
 
-            Ok(Receiver::new(receiver))
+            Ok(receiver)
         }
         .boxed()
     }
 
-    fn send(&self, message: Message) -> Task {
+    fn send(&self, bytes: Bytes) -> BoxFuture<'static, io::Result<Channel>> {
         let mut runner = self.runner.clone();
 
         async move {
             let (sender, receiver) = mpsc::channel(1);
-            let _ = runner.send(Action::Send(message, sender)).await;
+            let _ = runner.send(Action::Send(bytes, sender)).await;
 
-            Ok(Receiver::new(receiver))
+            Ok(receiver)
         }
         .boxed()
     }
+}
+
+type Sender = mpsc::Sender<Bytes>;
+
+enum Action {
+    Listen(Sender),
+    Send(Bytes, Sender),
 }
 
 async fn run(
@@ -82,65 +83,60 @@ async fn run(
 ) -> io::Result<()> {
     use future::Either;
 
-    let mut output = BufReader::new(output).lines();
+    let mut output = BufReader::new(output);
     let mut listeners = Vec::new();
+    let mut buffer = Vec::new();
 
     loop {
-        let next_event = {
-            let next_line = Box::pin(output.next_line());
+        let event = {
+            let next_line = Box::pin(output.read_until(0xA, &mut buffer));
             let next_action = receiver.next().fuse();
+            let next_event = future::select(next_line, next_action);
 
-            future::select(next_line, next_action)
-        };
-
-        let event = match next_event.await {
-            Either::Left((line, _)) => Either::Left(line),
-            Either::Right((Some(action), _)) => Either::Right(action),
-            _ => return Ok(()),
+            match next_event.await {
+                Either::Left((line, _)) => Either::Left(line),
+                Either::Right((Some(action), _)) => Either::Right(action),
+                _ => return Ok(()),
+            }
         };
 
         match event {
             Either::Right(Action::Listen(sender)) => {
                 listeners.push(sender);
             }
-            Either::Left(Ok(Some(line))) => {
-                let Ok(message) = deserialize(&line).await else {
+            Either::Left(Ok(n)) => {
+                if n == 0 {
+                    return Ok(());
+                }
+
+                let bytes = Bytes::from_owner(std::mem::take(&mut buffer));
+
+                for listener in &mut listeners {
+                    let _ = listener.send(bytes.clone()).await;
+                }
+            }
+            Either::Right(Action::Send(bytes, mut sender)) => {
+                write(&mut input, &bytes).await?;
+
+                let Ok(Message::Request(_)) = Message::<mcp::Ignored>::deserialize(&bytes) else {
                     continue;
                 };
 
-                for listener in &mut listeners {
-                    let _ = listener.send(Ok(message.clone())).await;
-                }
-            }
-            Either::Right(Action::Send(message, mut sender)) => match message {
-                Message::Request(request) => {
-                    let request_id = request.id;
-                    write(&mut input, &Message::Request(request)).await?;
+                while let Ok(n) = output.read_until(0xA, &mut buffer).await {
+                    if n == 0 {
+                        return Ok(());
+                    }
 
-                    loop {
-                        let Some(line) = output.next_line().await? else {
-                            return Ok(());
-                        };
+                    let bytes = Bytes::from_owner(std::mem::take(&mut buffer));
+                    let _ = sender.send(bytes.clone()).await;
 
-                        let message = deserialize(&line).await;
-
-                        match message {
-                            Ok(server::Message::Response(response))
-                                if response.id == request_id =>
-                            {
-                                let _ = sender.send(Ok(server::Message::Response(response))).await;
-                                break;
-                            }
-                            _ => {
-                                let _ = sender.send(message).await;
-                            }
-                        }
+                    if let Ok(server::Message::Response(_)) =
+                        server::Message::<mcp::Ignored>::deserialize(&bytes)
+                    {
+                        break;
                     }
                 }
-                Message::Notification(_) | Message::Response(_) | Message::Error { .. } => {
-                    write(&mut input, &message).await?;
-                }
-            },
+            }
             _ => {
                 break;
             }
@@ -150,16 +146,8 @@ async fn run(
     Ok(())
 }
 
-async fn deserialize(json: &str) -> io::Result<server::Message<serde_json::Value>> {
-    // TODO: Deserialize in blocking task (?)
-    Ok(serde_json::from_str(json)?)
-}
-
-async fn write(input: &mut (impl AsyncWrite + Unpin), message: &Message) -> io::Result<()> {
-    // TODO: Serialize in blocking task (?)
-    let json = serde_json::to_vec(message)?;
-
-    input.write_all(&json).await?;
+async fn write(input: &mut (impl AsyncWrite + Unpin), data: &[u8]) -> io::Result<()> {
+    input.write_all(data).await?;
     input.write_u8(0xA).await?;
     input.flush().await
 }

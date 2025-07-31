@@ -1,13 +1,16 @@
 pub mod transport;
 
+mod connection;
 mod stdio;
 
 pub use stdio::Stdio;
 pub use transport::Transport;
 
+use connection::Connection;
+
 use crate::mcp;
 use crate::mcp::client::request;
-use crate::mcp::client::{Capabilities, Message, Notification, Request, Response};
+use crate::mcp::client::{Capabilities, Notification, Request, Response};
 use crate::mcp::server;
 use crate::mcp::server::tool;
 
@@ -19,7 +22,7 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Client {
-    connection: Connection,
+    session: Session,
     server: Server,
 }
 
@@ -29,12 +32,12 @@ impl Client {
         version: impl AsRef<str>,
         transport: impl Transport + Send + Sync + 'static,
     ) -> io::Result<Self> {
-        let mut connection = Connection {
+        let mut session = Session {
             transport: Arc::new(transport),
             next_request: mcp::Id::default(),
         };
 
-        let initialize = connection
+        let initialize = session
             .request(request::Initialize {
                 protocol_version: mcp::VERSION.to_owned(),
                 capabilities: Capabilities {},
@@ -59,10 +62,10 @@ impl Client {
             ));
         }
 
-        connection.notify(Notification::Initialized).await?;
+        session.notify(Notification::Initialized).await?;
 
         Ok(Self {
-            connection,
+            session,
             server: Server {
                 capabilities: initialize.result.capabilities,
                 information: initialize.result.server_info,
@@ -75,7 +78,7 @@ impl Client {
     }
 
     pub async fn list_tools(&mut self) -> io::Result<Vec<server::Tool>> {
-        let list = self.connection.request(Request::ToolsList).await?;
+        let list = self.session.request(Request::ToolsList).await?;
 
         let mcp::Response {
             result: server::response::ToolsList { tools },
@@ -92,7 +95,7 @@ impl Client {
     ) -> impl Straw<tool::Outcome, Event, io::Error> {
         sipper(async move |mut sender| {
             let mut call = self
-                .connection
+                .session
                 .request(Request::ToolsCall {
                     params: request::ToolCall {
                         name: name.as_ref().to_owned(),
@@ -129,26 +132,26 @@ pub enum Event {
     Request(mcp::Id, server::Request),
 }
 
-struct Connection {
+struct Session {
     transport: Arc<dyn Transport + Send + Sync>,
     next_request: mcp::Id,
 }
 
-impl Connection {
-    async fn request(&mut self, request: impl Into<Request>) -> io::Result<transport::Receiver> {
+impl Session {
+    async fn request(&mut self, request: impl Into<Request>) -> io::Result<Connection> {
         let request = request.into();
 
         self.transport
-            .send(Message::request(self.next_request.increment(), request))
+            .send(mcp::Request::new(self.next_request.increment(), request).serialize()?)
             .await
+            .map(Connection::new)
     }
 
-    #[allow(unused)]
     async fn notify(&self, notification: impl Into<Notification>) -> io::Result<()> {
         let notification = notification.into();
 
         self.transport
-            .send(Message::notification(notification))
+            .send(mcp::Notification::new(notification).serialize()?)
             .await?;
 
         Ok(())
@@ -156,13 +159,15 @@ impl Connection {
 
     #[allow(unused)]
     async fn response(&self, id: mcp::Id, response: Response) -> io::Result<()> {
-        self.transport.send(Message::response(id, response)).await;
+        self.transport
+            .send(mcp::Response::new(id, response).serialize()?)
+            .await;
 
         Ok(())
     }
 }
 
-impl fmt::Debug for Connection {
+impl fmt::Debug for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Connection")
             .field("next_request", &self.next_request) // TODO: Debug transport

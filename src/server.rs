@@ -1,5 +1,6 @@
 pub mod transport;
 
+mod connection;
 #[cfg(feature = "server-http")]
 mod http;
 mod stdio;
@@ -14,7 +15,8 @@ use crate::mcp;
 use crate::mcp::client;
 use crate::mcp::server;
 use crate::mcp::server::response::{self, Response};
-use crate::server::transport::{Action, Channel, Connection, Receipt};
+use crate::server::connection::{Connection, Receipt};
+use crate::server::transport::{Action, Channel};
 
 use tokio::task;
 
