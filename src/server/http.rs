@@ -42,7 +42,7 @@ impl Http {
                 let sender = sender.clone();
 
                 drop(task::spawn(async move {
-                    let service = service_fn(move |request| serve(request, sender.clone()));
+                    let service = service_fn(|request| serve(request, sender.clone()));
 
                     if let Err(error) = auto::Builder::new(rt::TokioExecutor::new())
                         .serve_connection_with_upgrades(stream, service)
