@@ -19,7 +19,7 @@ serde.workspace = true
 serde.features = ["derive"]
 
 tokio.workspace = true
-tokio.features = ["io-std", "io-util"]
+tokio.features = ["io-std", "io-util", "rt"]
 
 hyper.workspace = true
 hyper.optional = true

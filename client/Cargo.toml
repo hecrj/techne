@@ -18,7 +18,7 @@ serde.workspace = true
 sipper.workspace = true
 
 tokio.workspace = true
-tokio.features = ["io-std", "io-util", "process"]
+tokio.features = ["io-std", "io-util", "process", "rt"]
 
 reqwest.workspace = true
 reqwest.optional = true
