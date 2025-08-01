@@ -1,22 +1,24 @@
+pub use techne_mcp as mcp;
+
+pub mod tool;
 pub mod transport;
 
 mod connection;
-#[cfg(feature = "server-http")]
+#[cfg(feature = "http")]
 mod http;
 mod stdio;
 
-#[cfg(feature = "server-http")]
+#[cfg(feature = "http")]
 pub use http::Http;
 pub use stdio::Stdio;
+pub use tool::Tool;
 pub use transport::Transport;
 
-use crate::Tool;
-use crate::mcp;
+use crate::connection::{Connection, Receipt};
 use crate::mcp::client;
 use crate::mcp::server;
 use crate::mcp::server::response::{self, Response};
-use crate::server::connection::{Connection, Receipt};
-use crate::server::transport::{Action, Channel};
+use crate::transport::{Action, Channel};
 
 use tokio::task;
 
@@ -212,7 +214,7 @@ impl Server {
 
 pub async fn transport(mut args: env::Args) -> io::Result<impl Transport> {
     enum HttpOrStdio {
-        #[cfg(feature = "server-http")]
+        #[cfg(feature = "http")]
         Http(Http),
         Stdio(Stdio),
     }
@@ -222,7 +224,7 @@ pub async fn transport(mut args: env::Args) -> io::Result<impl Transport> {
             use futures::FutureExt;
 
             match self {
-                #[cfg(feature = "server-http")]
+                #[cfg(feature = "http")]
                 HttpOrStdio::Http(http) => http.accept().boxed(),
                 HttpOrStdio::Stdio(stdio) => stdio.accept().boxed(),
             }
@@ -235,7 +237,7 @@ pub async fn transport(mut args: env::Args) -> io::Result<impl Transport> {
     let protocol = protocol.as_deref();
 
     if protocol == Some("--http") {
-        #[cfg(feature = "server-http")]
+        #[cfg(feature = "http")]
         {
             let address = args.next();
             let address = address.as_deref().unwrap_or("127.0.0.1:8080");
@@ -252,7 +254,7 @@ pub async fn transport(mut args: env::Args) -> io::Result<impl Transport> {
             return Ok(HttpOrStdio::Http(Http::bind(address).await?));
         }
 
-        #[cfg(not(feature = "server-http"))]
+        #[cfg(not(feature = "http"))]
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("Streamable HTTP is not supported for this server"),

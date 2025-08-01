@@ -1,0 +1,35 @@
+[package]
+name = "techne-server"
+description = "A simple, handmade MCP server focused on type-safety"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+http = ["dep:hyper", "dep:hyper-util", "dep:http", "dep:http-body-util", "tokio/net"]
+
+[dependencies]
+techne-mcp.workspace = true
+futures.workspace = true
+log.workspace = true
+
+serde.workspace = true
+serde.features = ["derive"]
+
+tokio.workspace = true
+tokio.features = ["io-std", "io-util"]
+
+hyper.workspace = true
+hyper.optional = true
+
+hyper-util.workspace = true
+hyper-util.optional = true
+hyper-util.features = ["tokio", "server-auto"]
+
+http.workspace = true
+http.optional = true
+
+http-body-util.workspace = true
+http-body-util.optional = true

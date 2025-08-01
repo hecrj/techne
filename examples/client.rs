@@ -1,7 +1,7 @@
 use techne::Client;
 use techne::client::{Http, Stdio};
+use techne::mcp::json;
 
-use serde_json::json;
 use std::env;
 use std::io;
 

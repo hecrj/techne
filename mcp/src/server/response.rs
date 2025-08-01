@@ -1,5 +1,5 @@
-use crate::mcp::server::tool;
-use crate::mcp::server::{Capabilities, Server, Tool};
+use crate::server::tool;
+use crate::server::{Capabilities, Server, Tool};
 
 use serde::{Deserialize, Serialize};
 

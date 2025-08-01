@@ -1,7 +1,7 @@
-use crate::client::transport::{Channel, Transport};
 use crate::mcp::client::Message;
 use crate::mcp::server;
 use crate::mcp::{self, Bytes};
+use crate::transport::{Channel, Transport};
 
 use futures::channel::mpsc;
 use futures::future::{self, BoxFuture};

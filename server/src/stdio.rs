@@ -1,6 +1,6 @@
-use crate::server::transport::{Action, Result, Transport};
+use crate::mcp::Bytes;
+use crate::transport::{Action, Result, Transport};
 
-use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::{SinkExt, StreamExt};

@@ -2,10 +2,6 @@
 
 # Techne
 
-> A state involving true reason concerned with production.
->
-> — Aristotle
-
 [![Documentation](https://docs.rs/techne/badge.svg)](https://docs.rs/techne)
 [![Crates.io](https://img.shields.io/crates/v/techne.svg)](https://crates.io/crates/techne)
 [![License](https://img.shields.io/crates/l/techne.svg)](https://github.com/hecrj/techne/blob/master/LICENSE)
@@ -32,7 +28,7 @@ Create a `Server`, choose your desired transport, list your tools, and run:
 ```rust
 use techne::Server;
 use techne::server::Stdio;
-use techne::tool::{tool, string};
+use techne::server::tool::{tool, string};
 
 use std::io;
 
@@ -61,8 +57,8 @@ Create a `Client` with your desired transport and query the server:
 ```rust
 use techne::Client;
 use techne::client::Stdio;
+use techne::mcp::json;
 
-use serde_json::json;
 use std::io;
 
 #[tokio::main]

@@ -1,6 +1,6 @@
-use crate::client::transport::Channel;
 use crate::mcp;
 use crate::mcp::server;
+use crate::transport::Channel;
 
 use futures::StreamExt;
 use serde::de::DeserializeOwned;

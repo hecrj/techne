@@ -1,18 +1,19 @@
+pub use techne_mcp as mcp;
+
 pub mod transport;
 
 mod connection;
-#[cfg(feature = "client-http")]
+#[cfg(feature = "http")]
 mod http;
 mod stdio;
 
-#[cfg(feature = "client-http")]
+#[cfg(feature = "http")]
 pub use http::Http;
 pub use stdio::Stdio;
 pub use transport::Transport;
 
 use connection::Connection;
 
-use crate::mcp;
 use crate::mcp::client::request;
 use crate::mcp::client::{Capabilities, Notification, Request, Response};
 use crate::mcp::server;
@@ -95,7 +96,7 @@ impl Client {
     pub fn call_tool(
         &mut self,
         name: impl AsRef<str>,
-        arguments: serde_json::Value,
+        arguments: mcp::Value,
     ) -> impl Straw<tool::Outcome, Event, io::Error> {
         sipper(async move |mut sender| {
             let mut call = self

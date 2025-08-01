@@ -9,10 +9,12 @@ pub use server::Server;
 
 pub use bytes::Bytes;
 pub use serde::de::IgnoredAny as Ignored;
-pub use serde_json::Value;
+pub use serde_json::{Map, Value, json};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+
+use std::io;
 
 pub const VERSION: &str = "2025-06-18";
 pub const JSONRPC: &str = "2.0";
@@ -87,7 +89,7 @@ pub struct Request<T> {
 }
 
 impl<T> Request<T> {
-    pub(crate) fn new(id: Id, payload: T) -> Self {
+    pub fn new(id: Id, payload: T) -> Self {
         Self {
             jsonrpc: JSONRPC.to_owned(),
             id,
@@ -111,7 +113,7 @@ pub struct Response<T = serde_json::Value> {
 }
 
 impl<T> Response<T> {
-    pub(crate) fn new(id: Id, result: T) -> Self {
+    pub fn new(id: Id, result: T) -> Self {
         Self {
             jsonrpc: JSONRPC.to_owned(),
             id,
@@ -135,7 +137,7 @@ pub struct Notification<T> {
 }
 
 impl<T> Notification<T> {
-    pub(crate) fn new(payload: T) -> Self {
+    pub fn new(payload: T) -> Self {
         Self {
             jsonrpc: JSONRPC.to_owned(),
             payload,
@@ -226,4 +228,8 @@ impl Id {
         self.0 += 1;
         current
     }
+}
+
+pub fn from_value<T: DeserializeOwned>(value: Value) -> io::Result<T> {
+    Ok(serde_json::from_value(value)?)
 }

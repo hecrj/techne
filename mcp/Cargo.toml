@@ -1,0 +1,15 @@
+[package]
+name = "techne-mcp"
+description = "Messages and data structures of the Model Context Protocol"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+bytes.workspace = true
+serde_json.workspace = true
+
+serde.workspace = true
+serde.features = ["derive"]

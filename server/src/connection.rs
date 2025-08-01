@@ -1,7 +1,7 @@
 use crate::mcp;
 use crate::mcp::server::{Notification, Request, Response};
 use crate::mcp::{Bytes, ErrorKind, Id};
-use crate::server::transport::{Channel, Result};
+use crate::transport::{Channel, Result};
 
 use futures::SinkExt;
 use futures::channel::mpsc;

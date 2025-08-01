@@ -1,4 +1,5 @@
-use bytes::Bytes;
+use crate::mcp::Bytes;
+
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 

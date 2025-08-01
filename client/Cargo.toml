@@ -1,0 +1,24 @@
+[package]
+name = "techne-client"
+description = "A simple, handmade MCP client with streaming support"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+http = ["dep:reqwest"]
+
+[dependencies]
+techne-mcp.workspace = true
+futures.workspace = true
+log.workspace = true
+serde.workspace = true
+sipper.workspace = true
+
+tokio.workspace = true
+tokio.features = ["io-std", "io-util", "process"]
+
+reqwest.workspace = true
+reqwest.optional = true

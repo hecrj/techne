@@ -1,5 +1,5 @@
-use crate::mcp::Schema;
-use crate::mcp::server::content::{self, Content};
+use crate::Schema;
+use crate::server::content::{self, Content};
 
 use serde::{Deserialize, Serialize};
 

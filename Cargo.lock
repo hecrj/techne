@@ -1122,19 +1122,48 @@ dependencies = [
 name = "techne"
 version = "0.1.0-dev"
 dependencies = [
+ "techne-client",
+ "techne-mcp",
+ "techne-server",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "techne-client"
+version = "0.1.0-dev"
+dependencies = [
+ "futures",
+ "log",
+ "reqwest",
+ "serde",
+ "sipper",
+ "techne-mcp",
+ "tokio",
+]
+
+[[package]]
+name = "techne-mcp"
+version = "0.1.0-dev"
+dependencies = [
  "bytes",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "techne-server"
+version = "0.1.0-dev"
+dependencies = [
  "futures",
  "http",
  "http-body-util",
  "hyper",
  "hyper-util",
  "log",
- "reqwest",
  "serde",
- "serde_json",
- "sipper",
+ "techne-mcp",
  "tokio",
- "tracing-subscriber",
 ]
 
 [[package]]

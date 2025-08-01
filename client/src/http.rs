@@ -1,5 +1,5 @@
-use crate::client::transport::{Channel, Transport};
 use crate::mcp::Bytes;
+use crate::transport::{Channel, Transport};
 
 use futures::SinkExt;
 use futures::channel::mpsc;

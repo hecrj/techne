@@ -1,4 +1,4 @@
-use crate::server::transport::{self, Action, Transport};
+use crate::transport::{self, Action, Transport};
 
 use futures::channel::mpsc;
 use futures::channel::oneshot;

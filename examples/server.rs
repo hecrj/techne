@@ -1,5 +1,5 @@
+use techne::server::tool::{string, tool, tool_2, u32};
 use techne::server::{self, Server};
-use techne::tool::{string, tool, tool_2, u32};
 
 use std::env;
 use std::io;

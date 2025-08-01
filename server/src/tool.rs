@@ -1,6 +1,7 @@
-use crate::mcp::Schema;
+use crate::mcp;
 use crate::mcp::server::tool::{IntoOutcome, Outcome};
 use crate::mcp::server::{Notification, Request};
+use crate::mcp::{Map, Schema, Value};
 
 use futures::SinkExt;
 use futures::channel::mpsc;
@@ -16,7 +17,7 @@ pub struct Tool<Name = String, Description = String> {
     pub description: Description,
     input: Schema,
     output: Option<Schema>,
-    call: Box<dyn Fn(serde_json::Value) -> io::Result<mpsc::Receiver<Action>> + Send + Sync>,
+    call: Box<dyn Fn(Value) -> io::Result<mpsc::Receiver<Action>> + Send + Sync>,
 }
 
 pub enum Action {
@@ -31,7 +32,7 @@ impl Tool<(), ()> {
     pub unsafe fn new(
         input: Schema,
         output: Option<Schema>,
-        call: impl Fn(serde_json::Value) -> io::Result<mpsc::Receiver<Action>> + Send + Sync + 'static,
+        call: impl Fn(Value) -> io::Result<mpsc::Receiver<Action>> + Send + Sync + 'static,
     ) -> Self {
         Self {
             name: (),
@@ -74,7 +75,7 @@ impl Tool {
         self.output.as_ref()
     }
 
-    pub fn call(&self, json: serde_json::Value) -> io::Result<mpsc::Receiver<Action>> {
+    pub fn call(&self, json: Value) -> io::Result<mpsc::Receiver<Action>> {
         (self.call)(json)
     }
 }
@@ -170,7 +171,7 @@ pub trait Argument<T> {
 
     fn schema(&self) -> Schema;
 
-    fn deserialize(&self, json: serde_json::Value) -> serde_json::Result<T>;
+    fn deserialize(&self, json: Value) -> io::Result<T>;
 
     fn is_required(&self) -> bool {
         true
@@ -211,7 +212,7 @@ pub fn optional<T>(argument: impl Argument<T>) -> impl Argument<Option<T>> {
             self.argument.schema()
         }
 
-        fn deserialize(&self, json: serde_json::Value) -> serde_json::Result<Option<T>> {
+        fn deserialize(&self, json: Value) -> io::Result<Option<T>> {
             if json.is_null() {
                 return Ok(None);
             }
@@ -255,8 +256,8 @@ impl Argument<String> for NamedArg {
         }
     }
 
-    fn deserialize(&self, json: serde_json::Value) -> serde_json::Result<String> {
-        serde_json::from_value(json)
+    fn deserialize(&self, json: Value) -> io::Result<String> {
+        mcp::from_value(json)
     }
 }
 
@@ -271,8 +272,8 @@ impl Argument<u32> for NamedArg {
         }
     }
 
-    fn deserialize(&self, json: serde_json::Value) -> serde_json::Result<u32> {
-        serde_json::from_value(json)
+    fn deserialize(&self, json: Value) -> io::Result<u32> {
+        mcp::from_value(json)
     }
 }
 
@@ -287,8 +288,8 @@ impl Argument<f32> for NamedArg {
         }
     }
 
-    fn deserialize(&self, json: serde_json::Value) -> serde_json::Result<f32> {
-        serde_json::from_value(json)
+    fn deserialize(&self, json: Value) -> io::Result<f32> {
+        mcp::from_value(json)
     }
 }
 
@@ -303,8 +304,8 @@ impl Argument<bool> for NamedArg {
         }
     }
 
-    fn deserialize(&self, json: serde_json::Value) -> serde_json::Result<bool> {
-        serde_json::from_value(json)
+    fn deserialize(&self, json: Value) -> io::Result<bool> {
+        mcp::from_value(json)
     }
 }
 
@@ -316,15 +317,10 @@ fn required<T>(arg: &impl Argument<T>) -> Option<String> {
     arg.is_required().then(|| arg.name().to_owned())
 }
 
-fn object(
-    json: serde_json::Value,
-) -> serde_json::Result<serde_json::Map<String, serde_json::Value>> {
-    serde_json::from_value(json)
+fn object(json: Value) -> io::Result<Map<String, Value>> {
+    mcp::from_value(json)
 }
 
-fn deserialize<T>(
-    arg: &impl Argument<T>,
-    object: &mut serde_json::Map<String, serde_json::Value>,
-) -> serde_json::Result<T> {
-    arg.deserialize(object.remove(arg.name()).unwrap_or(serde_json::Value::Null))
+fn deserialize<T>(arg: &impl Argument<T>, object: &mut Map<String, Value>) -> io::Result<T> {
+    arg.deserialize(object.remove(arg.name()).unwrap_or(Value::Null))
 }

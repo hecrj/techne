@@ -1,4 +1,4 @@
-use crate::mcp::client::{self, Client};
+use crate::client::{self, Client};
 
 use serde::{Deserialize, Serialize};
 
