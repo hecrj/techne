@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 bytes.workspace = true
 serde_json.workspace = true
+skema.workspace = true
 
 serde.workspace = true
 serde.features = ["derive"]

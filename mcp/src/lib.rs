@@ -1,11 +1,9 @@
 pub mod client;
 pub mod server;
 
-mod schema;
-
 pub use client::Client;
-pub use schema::Schema;
 pub use server::Server;
+pub use skema::Schema;
 
 pub use bytes::Bytes;
 pub use serde::de::IgnoredAny as Ignored;

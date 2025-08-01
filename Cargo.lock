@@ -1033,6 +1033,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "skema"
+version = "0.1.0-dev"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f86860e467f2202e32d6ddd977227c1102e6e65317a9c25cf7a07a20f693263"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1149,6 +1158,7 @@ dependencies = [
  "bytes",
  "serde",
  "serde_json",
+ "skema",
 ]
 
 [[package]]
