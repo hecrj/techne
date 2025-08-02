@@ -29,16 +29,16 @@ tokio.version = "1"
 tokio.features = ["macros", "rt", "rt-multi-thread"]
 
 [workspace.package]
-version = "0.1.0-dev.1"
+version = "0.1.0-dev.2"
 authors = ["Héctor Ramón Jiménez <hector@hecrj.dev>"]
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/hecrj/techne"
 
 [workspace.dependencies]
-techne-mcp = { version = "0.1.0-dev.1", path = "./mcp" }
-techne-client = { version = "0.1.0-dev.1", path = "./client" }
-techne-server = { version = "0.1.0-dev.1", path = "./server" }
+techne-mcp = { version = "0.1.0-dev.2", path = "./mcp" }
+techne-client = { version = "0.1.0-dev.2", path = "./client" }
+techne-server = { version = "0.1.0-dev.2", path = "./server" }
 
 bytes = "1.10"
 futures = "0.3"

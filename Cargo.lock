@@ -1129,7 +1129,7 @@ dependencies = [
 
 [[package]]
 name = "techne"
-version = "0.1.0-dev.1"
+version = "0.1.0-dev.2"
 dependencies = [
  "techne-client",
  "techne-mcp",
@@ -1140,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "techne-client"
-version = "0.1.0-dev.1"
+version = "0.1.0-dev.2"
 dependencies = [
  "futures",
  "log",
@@ -1153,7 +1153,7 @@ dependencies = [
 
 [[package]]
 name = "techne-mcp"
-version = "0.1.0-dev.1"
+version = "0.1.0-dev.2"
 dependencies = [
  "bytes",
  "serde",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "techne-server"
-version = "0.1.0-dev.1"
+version = "0.1.0-dev.2"
 dependencies = [
  "futures",
  "http",
