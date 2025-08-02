@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub enum Response {
     Initialize(Initialize),
     ToolsList(ToolsList),
-    ToolsCall(tool::Outcome),
+    ToolsCall(tool::Response),
     Ping {},
 }
 
@@ -37,8 +37,8 @@ impl From<ToolsList> for Response {
     }
 }
 
-impl From<tool::Outcome> for Response {
-    fn from(response: tool::Outcome) -> Self {
+impl From<tool::Response> for Response {
+    fn from(response: tool::Response) -> Self {
         Self::ToolsCall(response)
     }
 }

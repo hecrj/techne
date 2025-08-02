@@ -17,18 +17,18 @@ pub struct Tool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Outcome<T = serde_json::Value> {
+pub struct Response<T = serde_json::Value> {
     #[serde(flatten)]
-    content: Content<T>,
-    is_error: bool,
+    pub content: Content<T>,
+    pub is_error: bool,
 }
 
-impl<T> Outcome<T> {
-    pub async fn serialize(self) -> serde_json::Result<Outcome>
+impl<T> Response<T> {
+    pub async fn serialize(self) -> serde_json::Result<Response>
     where
         T: Serialize,
     {
-        Ok(Outcome {
+        Ok(Response {
             content: match self.content {
                 Content::Unstructured(content) => Content::Unstructured(content),
                 Content::Structured(content) => {
@@ -40,44 +40,44 @@ impl<T> Outcome<T> {
     }
 }
 
-pub trait IntoOutcome {
+pub trait IntoResponse {
     type Content;
 
-    fn into_outcome(self) -> Outcome<Self::Content>;
+    fn into_outcome(self) -> Response<Self::Content>;
 }
 
-impl<T> IntoOutcome for T
+impl<T> IntoResponse for T
 where
     T: Into<Content<T>>,
 {
     type Content = T;
 
-    fn into_outcome(self) -> Outcome<Self::Content> {
-        Outcome {
+    fn into_outcome(self) -> Response<Self::Content> {
+        Response {
             content: self.into(),
             is_error: false,
         }
     }
 }
 
-impl<T, E> IntoOutcome for Result<T, E>
+impl<T, E> IntoResponse for Result<T, E>
 where
     T: Into<Content<T>>,
     E: std::error::Error,
 {
     type Content = T;
 
-    fn into_outcome(self) -> Outcome<T> {
+    fn into_outcome(self) -> Response<T> {
         match self {
-            Ok(value) => Outcome {
+            Ok(value) => Response {
                 content: value.into(),
                 is_error: false,
             },
-            Err(error) => Outcome {
+            Err(error) => Response {
                 content: Content::Unstructured(vec![content::Unstructured::Text {
                     text: error.to_string(),
                 }]),
-                is_error: false,
+                is_error: true,
             },
         }
     }

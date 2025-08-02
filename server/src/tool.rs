@@ -1,5 +1,5 @@
 use crate::mcp;
-use crate::mcp::server::tool::{IntoOutcome, Outcome};
+use crate::mcp::server::tool::{IntoResponse, Response};
 use crate::mcp::server::{Notification, Request};
 use crate::mcp::{Map, Schema, Value};
 
@@ -23,7 +23,7 @@ pub struct Tool<Name = String, Description = String> {
 pub enum Action {
     Request(Request),
     Notify(Notification),
-    Finish(io::Result<Outcome>),
+    Finish(io::Result<Response>),
 }
 
 impl Tool<(), ()> {
@@ -85,7 +85,7 @@ pub fn tool<A, O, F>(
     a: impl Argument<A> + Send + Sync + 'static,
 ) -> Tool<(), ()>
 where
-    O: IntoOutcome,
+    O: IntoResponse,
     O::Content: Serialize + Send,
     F: Future<Output = O> + Send + 'static,
 {
@@ -117,7 +117,7 @@ pub fn tool_2<A, B, O, F>(
     b: impl Argument<B> + Send + Sync + 'static,
 ) -> Tool<(), ()>
 where
-    O: IntoOutcome,
+    O: IntoResponse,
     O::Content: Serialize + Send,
     F: Future<Output = O> + Send + 'static,
 {
@@ -146,7 +146,7 @@ where
 
 fn spawn<O>(execution: impl Future<Output = O> + Send + 'static) -> mpsc::Receiver<Action>
 where
-    O: IntoOutcome,
+    O: IntoResponse,
     O::Content: Serialize + Send,
 {
     let (mut sender, receiver) = mpsc::channel(1);

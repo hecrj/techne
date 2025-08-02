@@ -97,7 +97,7 @@ impl Client {
         &mut self,
         name: impl AsRef<str>,
         arguments: mcp::Value,
-    ) -> impl Straw<tool::Outcome, Event, io::Error> {
+    ) -> impl Straw<tool::Response, Event, io::Error> {
         sipper(async move |mut sender| {
             let mut call = self
                 .session
