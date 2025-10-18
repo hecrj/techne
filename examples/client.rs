@@ -13,7 +13,7 @@ pub async fn main() -> io::Result<()> {
     let use_http = env::args().nth(1).as_deref() == Some("--http");
 
     let mut client = if use_http {
-        // Run `cargo run --example client -- --http` first!
+        // Run `cargo run --example server -- --http` first!
         let transport = Http::new("http://127.0.0.1:8080")?;
 
         Client::new("techne-http-client-example", version, transport).await?
